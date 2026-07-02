@@ -1,0 +1,3 @@
+กู้ซากก่อน: git status ถ้ามีงานค้างจากรอบที่ตายกลางคัน ให้เก็บให้จบ (verify + commit) ก่อนขึ้นงานใหม่
+จากนั้นทำต่อตามแผนใน docs/BUILD-PLAN.md จากสถานะใน docs/BUILD-STATE.md — ทำทีละ 1-2 work unit, verify ตามที่แผนกำหนด (typecheck/tests/e2e), commit local (ห้าม push จนกว่าจะสั่ง), อัปเดต docs/BUILD-STATE.md แล้วจบเทิร์นทันที
+ถ้าทุกข้อใน BUILD-STATE.md ติ๊กครบแล้ว: เติมบรรทัด "AUTOLOOP: COMPLETE" ท้ายไฟล์ BUILD-STATE.md และตอบแค่ AUTOLOOP: COMPLETE

@@ -1,0 +1,17 @@
+{
+  "name": "claude-autoloop",
+  "version": "0.1.0",
+  "description": "Keep a long-running Claude Code session working across subscription usage limits — headless round-by-round driver with a shared state file, automatic limit-reset detection (+5h fallback), and a stop-marker. No GUI.",
+  "type": "module",
+  "bin": {
+    "autoloop": "bin/autoloop.mjs"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["claude", "claude-code", "usage-limit", "auto-resume", "loop", "agent"],
+  "license": "MIT"
+}
