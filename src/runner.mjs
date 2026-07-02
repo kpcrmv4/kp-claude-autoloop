@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
  * Build the claude CLI argv (no prompt — that goes via stdin). Pure → testable.
  * Adapted from the original `autoresume` runner.
  */
-export function buildClaudeArgs({ sessionId, permissionMode, model, extraArgs, streamJson }) {
+export function buildClaudeArgs({ sessionId, permissionMode, model, effort, extraArgs, streamJson }) {
   const args = ['-p', '--output-format', streamJson ? 'stream-json' : 'json'];
   if (streamJson) args.push('--verbose'); // claude requires --verbose with -p stream-json
 
@@ -15,6 +15,7 @@ export function buildClaudeArgs({ sessionId, permissionMode, model, extraArgs, s
   }
   if (permissionMode) args.push('--permission-mode', permissionMode);
   if (model) args.push('--model', model);
+  if (effort) args.push('--effort', effort);
   if (Array.isArray(extraArgs) && extraArgs.length) args.push(...extraArgs);
 
   return args;
@@ -51,6 +52,7 @@ export function runClaudeOnce({
   sessionId,
   permissionMode,
   model,
+  effort,
   attemptTimeoutSec = 0,
   extraArgs,
   claudeCmd = 'claude', // test hook: point at a mock script
@@ -58,7 +60,7 @@ export function runClaudeOnce({
   onStdout, // optional live chunk callback (used by the split-screen view)
 }) {
   return new Promise((resolve) => {
-    const args = buildClaudeArgs({ sessionId, permissionMode, model, extraArgs, streamJson });
+    const args = buildClaudeArgs({ sessionId, permissionMode, model, effort, extraArgs, streamJson });
     const isWin = process.platform === 'win32';
 
     let child;

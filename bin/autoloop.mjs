@@ -48,7 +48,11 @@ OPTIONS
   --cooldown <sec>       pause between successful rounds (default 0)
   --timeout <sec>        kill a single round after this long (default 0 = no timeout)
   --permission-mode <m>  claude --permission-mode (e.g. acceptEdits)
-  --model <name>         claude --model override
+  --model <name>         claude --model (e.g. claude-sonnet-5 / claude-opus-4-8 / sonnet / opus)
+                         ⚠ headless ไม่จำ model ที่ตั้งไว้ใน VS Code — อยากได้ตัวไหนให้ระบุเสมอ
+  --effort <level>       claude --effort (e.g. low / medium / high)
+  --claude-arg <flag>    ส่ง flag อื่นทะลุไปหา claude ตรง ๆ (ใส่ซ้ำได้ทีละชิ้น)
+                         เช่น --claude-arg --fallback-model --claude-arg claude-sonnet-5
   --log <file>           append logs to a file
   --secrets <file>       notify secrets json (default: <repo>/autoloop.secrets.json)
                          shape: {"telegram":{"token":"...","chatId":"..."},"webhookUrl":"..."}
@@ -82,6 +86,8 @@ function parseArgs(argv) {
     attemptTimeoutSec: 0,
     permissionMode: null,
     model: null,
+    effort: null,
+    extraArgs: [],
     logFile: null,
     secretsFile: null,
     noNotify: false,
@@ -116,6 +122,8 @@ function parseArgs(argv) {
       case '--timeout': cfg.attemptTimeoutSec = Number(take()); break;
       case '--permission-mode': cfg.permissionMode = take(); break;
       case '--model': cfg.model = take(); break;
+      case '--effort': cfg.effort = take(); break;
+      case '--claude-arg': cfg.extraArgs.push(take()); break;
       case '--log': cfg.logFile = resolve(take()); break;
       case '--secrets': cfg.secretsFile = resolve(take()); break;
       case '--no-notify': cfg.noNotify = true; break;
@@ -155,6 +163,8 @@ function toRunArgv(cfg) {
   if (cfg.attemptTimeoutSec) out.push('--timeout', String(cfg.attemptTimeoutSec));
   if (cfg.permissionMode) out.push('--permission-mode', cfg.permissionMode);
   if (cfg.model) out.push('--model', cfg.model);
+  if (cfg.effort) out.push('--effort', cfg.effort);
+  for (const a of cfg.extraArgs || []) out.push('--claude-arg', a);
   if (cfg.logFile) out.push('--log', cfg.logFile);
   if (cfg.secretsFile) out.push('--secrets', cfg.secretsFile);
   if (cfg.noNotify) out.push('--no-notify');
