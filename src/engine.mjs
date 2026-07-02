@@ -77,7 +77,7 @@ export async function runEngine(cfg) {
     waits: 0,
     lastResult: null,
   });
-  notify({ status: 'start', message: `เริ่มขับ loop (max ${cfg.maxCycles} รอบ) · marker="${cfg.stopMarker}"` });
+  notify({ status: 'start', message: `จะทำงานเองสูงสุด ${cfg.maxCycles} รอบจนกว่างานจะเสร็จ · ถ้าโควตาหมดจะพักรอแล้วกลับมาทำต่อเองอัตโนมัติ` });
 
   let cycles = 0;
   let waits = 0;
@@ -89,7 +89,7 @@ export async function runEngine(cfg) {
       if (stopMarkerPresent(cfg.stateFile, cfg.stopMarker)) {
         log('info', `พบ stop marker "${cfg.stopMarker}" ใน ${cfg.stateFile} — งานจบแล้ว ✅`);
         updateRuntime(cfg.stateFile, { status: 'done', doneReason: 'stop-marker', cycles, waits });
-        notify({ status: 'done', message: 'พบ stop marker ใน state file — งานจบสมบูรณ์', cycles });
+        notify({ status: 'done', message: 'งานครบทุกข้อตามแผนแล้ว ปิดจ๊อบเรียบร้อย 🎉', cycles });
         return 0;
       }
 
@@ -127,7 +127,7 @@ export async function runEngine(cfg) {
         });
         notify({
           status: 'limited',
-          message: `โดน usage limit (ครั้งที่ ${waits}/${cfg.maxWaits})${reset == null ? ' · อ่านเวลา reset ไม่ได้ ใช้ fallback' : ''}`,
+          message: `พักรอครั้งที่ ${waits} (เพดาน ${cfg.maxWaits} ครั้ง)${reset == null ? ' · ระบบกะเวลาปลดล็อกไม่ได้ เลยใช้เวลาสำรองแทน' : ''}`,
           cycles,
           resumeAt: target,
         });
@@ -136,7 +136,7 @@ export async function runEngine(cfg) {
         if (waits >= cfg.maxWaits) {
           log('error', `ครบ maxWaits (${cfg.maxWaits}) — หยุด`);
           updateRuntime(cfg.stateFile, { status: 'error', doneReason: 'max-waits' });
-          notify({ status: 'error', message: `ครบเพดานรอ limit ${cfg.maxWaits} ครั้ง — หยุดแล้ว ต้องมาดูหน่อย`, cycles });
+          notify({ status: 'error', message: `พักรอโควตาครบ ${cfg.maxWaits} ครั้งแล้วยังไปต่อไม่ได้ — หยุดไว้ก่อน รบกวนเข้ามาเช็คครับ`, cycles });
           return 1;
         }
 
@@ -158,7 +158,7 @@ export async function runEngine(cfg) {
           lastCycleFinishedAt: new Date().toISOString(),
         });
         if (wasLimited) {
-          notify({ status: 'resumed', message: 'ฟื้นจาก limit แล้ว กลับมาทำงานต่อสำเร็จ', cycles });
+          notify({ status: 'resumed', message: 'โควตากลับมาแล้ว ทำงานรอบล่าสุดสำเร็จ เดินหน้าต่อเอง', cycles });
           wasLimited = false;
         }
 
@@ -166,13 +166,13 @@ export async function runEngine(cfg) {
         if (cfg.stopMarker && verdict.text.includes(cfg.stopMarker)) {
           log('info', `agent ตอบ stop marker "${cfg.stopMarker}" — งานจบแล้ว ✅`);
           updateRuntime(cfg.stateFile, { status: 'done', doneReason: 'reply-marker' });
-          notify({ status: 'done', message: 'agent ประกาศจบงาน (reply marker)', cycles });
+          notify({ status: 'done', message: 'ตัวทำงานยืนยันว่างานเสร็จครบแล้ว 🎉', cycles });
           return 0;
         }
         if (cycles >= cfg.maxCycles) {
           log('info', 'ครบ maxCycles — หยุดตามเพดานที่ตั้งไว้');
           updateRuntime(cfg.stateFile, { status: 'done', doneReason: 'max-cycles' });
-          notify({ status: 'done', message: `ครบเพดาน ${cfg.maxCycles} รอบ — งานอาจยังไม่จบ มา review แล้วต่อเพดานได้`, cycles });
+          notify({ status: 'done', message: `ทำครบโควตา ${cfg.maxCycles} รอบที่ตั้งไว้แล้ว — งานอาจยังไม่จบ เข้ามาดูความคืบหน้าแล้วสั่งรอบเพิ่มได้`, cycles });
           return 0;
         }
         if (cfg.cooldownSec > 0) {
@@ -186,13 +186,13 @@ export async function runEngine(cfg) {
       const tail = (res.stderr || res.stdout || '').slice(-1500).trim();
       if (tail) log('error', tail);
       updateRuntime(cfg.stateFile, { status: 'error', doneReason: 'claude-error', lastError: tail.slice(-500) });
-      notify({ status: 'error', message: `claude error (ไม่ใช่ limit) — หยุดแล้ว ต้องมาดู log\n${tail.slice(-300)}`, cycles });
+      notify({ status: 'error', message: `หยุดเพราะเจอปัญหา (ไม่ใช่เรื่องโควตา) — รายละเอียดท้ายนี้\n${tail.slice(-300)}`, cycles });
       return 1;
     }
 
     log('info', 'หยุดตามคำสั่งผู้ใช้ (SIGINT)');
     updateRuntime(cfg.stateFile, { status: 'stopped', doneReason: 'sigint' });
-    notify({ status: 'stopped', message: 'หยุดตามคำสั่งผู้ใช้', cycles });
+    notify({ status: 'stopped', message: 'หยุดเรียบร้อย งานที่ทำไว้ถูกเก็บครบ กลับมาสั่งต่อเมื่อไหร่ก็ได้', cycles });
     return 0;
   } finally {
     process.removeListener('SIGINT', onSigint);

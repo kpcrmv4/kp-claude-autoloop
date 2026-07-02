@@ -2,25 +2,32 @@
 // CLI-first: the engine fires these on lifecycle events — no GUI needed.
 // Adapted from the original autoresume notify module.
 
-const STATUS_ICON = {
-  start: '▶️',
-  limited: '⏳',
-  resumed: '🔄',
-  done: '✅',
-  error: '⛔',
-  stopped: '🛑',
-  test: '🔔',
+const STATUS_HEADER = {
+  start: '▶️ เริ่มทำงานอัตโนมัติ',
+  limited: '⏳ โควตา Claude หมดชั่วคราว — พักรอ',
+  resumed: '🔄 กลับมาทำงานต่อแล้ว',
+  done: '✅ จบงานแล้ว',
+  error: '⛔ มีปัญหา ต้องเข้ามาดู',
+  stopped: '🛑 หยุดตามคำสั่งแล้ว',
+  test: '🔔 ทดสอบการแจ้งเตือน',
 };
 
-/** Human-readable one-message form of an event. */
+/** dd/mm/yyyy HH:mm น. (เวลาเครื่อง) */
+export function fmtDateTime(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())} น.`;
+}
+
+/** Human-readable one-message form of an event (ภาษาคน, ไม่ใช่ศัพท์ dev). */
 export function formatEventText(event) {
-  const icon = STATUS_ICON[event.status] || 'ℹ️';
+  const header = STATUS_HEADER[event.status] || `ℹ️ ${event.status}`;
   return [
-    `${icon} autoloop: ${event.status}`,
-    event.project ? `project: ${event.project}` : null,
+    header,
+    event.project ? `งาน: ${event.project}` : null,
     event.message ? event.message : null,
-    event.cycles != null ? `cycles: ${event.cycles}` : null,
-    event.resumeAt ? `จะตื่น: ${new Date(event.resumeAt).toLocaleString('sv-SE')}` : null,
+    event.cycles != null ? `ทำไปแล้ว ${event.cycles} รอบ` : null,
+    event.resumeAt ? `จะตื่นมาทำต่อ: ${fmtDateTime(event.resumeAt)}` : null,
   ]
     .filter(Boolean)
     .join('\n');

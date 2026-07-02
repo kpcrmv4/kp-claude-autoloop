@@ -196,10 +196,10 @@ async function main() {
         );
         return 1;
       }
+      const { fmtDateTime } = await import('../src/notify.mjs');
       const results = await notifyAll(targets, {
         status: 'test',
-        project: 'autoloop',
-        message: 'ทดสอบการแจ้งเตือน — ถ้าเห็นข้อความนี้แปลว่าใช้งานได้ ✅',
+        message: `ถ้าเห็นข้อความนี้ = ระบบแจ้งเตือนใช้งานได้ ✅\nรูปแบบวันเวลาที่จะใช้: ${fmtDateTime(Date.now())}`,
       });
       results.forEach((r, i) =>
         process.stdout.write(`[autoloop] ${targets[i].kind}: ${r.ok ? `OK (${r.status})` : `FAILED ${JSON.stringify(r)}`}\n`),

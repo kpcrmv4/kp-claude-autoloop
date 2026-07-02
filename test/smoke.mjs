@@ -33,6 +33,7 @@ const res = spawnSync(
     '--min-retry', '1',
     '--buffer', '0',
     '--fallback-wait-min', '1',
+    '--no-notify', // never spam real Telegram/webhooks from tests
   ],
   {
     encoding: 'utf8',
