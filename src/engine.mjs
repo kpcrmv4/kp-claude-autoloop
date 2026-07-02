@@ -6,6 +6,7 @@ import { sleepUntil } from './sleep.mjs';
 import { log } from './log.mjs';
 import { stopMarkerPresent, updateRuntime } from './state.mjs';
 import { notifyAll } from './notify.mjs';
+import { readPlanProgress, renderWaitPanel, makePanelPainter } from './tui.mjs';
 
 function humanizeWait(ms) {
   const s = Math.round(ms / 1000);
@@ -94,7 +95,12 @@ export async function runEngine(cfg) {
       }
 
       const prompt = resolvePrompt(cfg);
-      log('info', `→ cycle ${cycles + 1}/${cfg.maxCycles} · ${cfg.sessionId ? 'resume ' + cfg.sessionId.slice(0, 8) : 'continue'}`);
+      const planNow = readPlanProgress(cfg.stateFile);
+      log(
+        'info',
+        `→ cycle ${cycles + 1}/${cfg.maxCycles} · ${cfg.sessionId ? 'resume ' + cfg.sessionId.slice(0, 8) : 'continue'}` +
+          (planNow ? ` · แผน ${planNow.done}/${planNow.total} ข้อ (${planNow.pct}%)${planNow.nextItem ? ` · ถัดไป: ${planNow.nextItem}` : ''}` : ''),
+      );
       updateRuntime(cfg.stateFile, { status: 'running', lastCycleStartedAt: new Date().toISOString() });
 
       const res = await runClaudeOnce({ ...cfg, prompt });
@@ -140,10 +146,34 @@ export async function runEngine(cfg) {
           return 1;
         }
 
-        await sleepUntil(target, {
-          shouldStop: () => stopRequested,
-          onTick: (left) => log('debug', `… นอนรอ limit reset เหลือ ~${Math.ceil(left / 60_000)} นาที`),
-        });
+        if (process.stdout.isTTY) {
+          // live cool-mode: repaint a countdown panel every second
+          const paint = makePanelPainter();
+          const panelState = () => ({
+            project,
+            cycles,
+            maxCycles: cfg.maxCycles,
+            waits,
+            maxWaits: cfg.maxWaits,
+            plan: readPlanProgress(cfg.stateFile),
+            resetAt: reset,
+            resumeAt: target,
+          });
+          paint(renderWaitPanel(panelState()));
+          await sleepUntil(target, {
+            shouldStop: () => stopRequested,
+            tickMs: 1000,
+            onTick: () => paint(renderWaitPanel(panelState())),
+          });
+          paint(renderWaitPanel(panelState())); // final 0s frame
+          process.stdout.write('\n');
+          log('info', '⏰ ถึงเวลาแล้ว — กลับมาทำงานต่อ');
+        } else {
+          await sleepUntil(target, {
+            shouldStop: () => stopRequested,
+            onTick: (left) => log('debug', `… นอนรอ limit reset เหลือ ~${Math.ceil(left / 60_000)} นาที`),
+          });
+        }
         continue;
       }
 
