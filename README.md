@@ -99,15 +99,21 @@ node bin/autoloop.mjs stop   --state-file "F:\my-proj\docs\STATE.md"
 autoloop ยิงแจ้งเตือนเองที่จังหวะสำคัญ (ไม่สแปมทุกรอบ): **เริ่มขับ · โดน limit (บอกเวลาจะตื่น) · ฟื้นกลับมาทำต่อสำเร็จ · งานจบ (แยกเหตุผล marker/ครบเพดาน) · error ที่ต้องมาดู · ถูกสั่งหยุด**
 
 ```bash
-# ตั้งค่า: สร้าง autoloop.secrets.json ที่ root (gitignored แล้ว) — ดู autoloop.secrets.example.json
+# ตั้งค่าง่ายสุด: wizard ใน CLI — ถาม token, ตรวจกับ Telegram จริง (getMe),
+# แล้วหา chat id ให้เอง (แค่ส่งข้อความหาบอทหนึ่งครั้ง) + ยิงทดสอบปิดท้าย
+node bin/autoloop.mjs notify-setup
+
+# หรือทำมือ: สร้าง autoloop.secrets.json ที่ root (gitignored แล้ว) — ดู autoloop.secrets.example.json
 { "telegram": { "token": "<จาก @BotFather>", "chatId": "<chat id>" } }
 # หรือใช้ env: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID / AUTOLOOP_WEBHOOK_URL (Discord/Slack/generic ก็ได้)
 
-# ทดสอบก่อนใช้จริง
+# ทดสอบซ้ำเมื่อไหร่ก็ได้
 node bin/autoloop.mjs notify-test
 
 # ปิดชั่วคราว: --no-notify
 ```
+
+> **Token ไม่มีทางหลุดขึ้น GitHub:** เก็บใน `autoloop.secrets.json` ซึ่งถูก gitignore ตั้งแต่บรรทัดแรก · โค้ดไม่เคย log ค่า token (โชว์เฉพาะแบบ mask `883xxx…xxxx` ใน wizard) · repo มีแต่ `.example` ที่เป็น placeholder
 
 ## กติกาที่ทำให้ปลอดภัย
 

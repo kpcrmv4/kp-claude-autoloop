@@ -25,6 +25,7 @@ USAGE
   autoloop status --state-file <file>                          show runtime state + log tail
   autoloop stop   --state-file <file>                          stop a detached run
   autoloop list                                                list recent Claude sessions
+  autoloop notify-setup                                        interactive Telegram setup wizard (auto chat-id)
   autoloop notify-test                                         send a test notification (Telegram/webhook)
 
 REQUIRED
@@ -184,6 +185,15 @@ async function main() {
       const sessions = await listSessions();
       process.stdout.write(formatSessions(sessions) + '\n');
       return 0;
+    }
+
+    case 'notify-setup': {
+      if (!process.stdin.isTTY) {
+        process.stderr.write('[autoloop] notify-setup ต้องรันในเทอร์มินัลจริง (interactive)\n');
+        return 2;
+      }
+      const { runNotifySetup } = await import('../src/notify-setup.mjs');
+      return await runNotifySetup({ secretsFile: cfg.secretsFile || defaultSecretsPath });
     }
 
     case 'notify-test': {
