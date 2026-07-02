@@ -6,7 +6,8 @@ import { sleepUntil } from './sleep.mjs';
 import { log } from './log.mjs';
 import { stopMarkerPresent, updateRuntime } from './state.mjs';
 import { notifyAll } from './notify.mjs';
-import { readPlanProgress, renderWaitPanel, makePanelPainter } from './tui.mjs';
+import { readPlanProgress, renderWaitPanel, makePanelPainter, renderWorkHeader, makeSplitScreen } from './tui.mjs';
+import { formatStreamEvent, makeJsonlSplitter } from './stream.mjs';
 
 function humanizeWait(ms) {
   const s = Math.round(ms / 1000);
@@ -103,7 +104,41 @@ export async function runEngine(cfg) {
       );
       updateRuntime(cfg.stateFile, { status: 'running', lastCycleStartedAt: new Date().toISOString() });
 
-      const res = await runClaudeOnce({ ...cfg, prompt });
+      // ── live split-screen: pinned progress header on top, Claude's activity
+      //    streaming underneath (TTY only; detached/log mode stays plain) ──
+      const live = process.stdout.isTTY;
+      let split = null;
+      let headerTimer = null;
+      let lastActivity = null;
+      const cycleStartedAt = Date.now();
+      const headerLines = () =>
+        renderWorkHeader({
+          project,
+          cycles,
+          maxCycles: cfg.maxCycles,
+          plan: readPlanProgress(cfg.stateFile),
+          startedAt: cycleStartedAt,
+          activity: lastActivity,
+        });
+      let onStdout;
+      if (live) {
+        split = makeSplitScreen();
+        split.open(headerLines());
+        headerTimer = setInterval(() => split.update(headerLines()), 1000);
+        onStdout = makeJsonlSplitter((obj) => {
+          const { lines, activity } = formatStreamEvent(obj);
+          if (activity) lastActivity = activity;
+          for (const ln of lines) split.writeLine(ln);
+        });
+      }
+
+      let res;
+      try {
+        res = await runClaudeOnce({ ...cfg, prompt, streamJson: true, onStdout });
+      } finally {
+        if (headerTimer) clearInterval(headerTimer);
+        if (split) split.close();
+      }
       const verdict = classifyResult(res);
 
       // 2) usage limit → sleep until the real reset time (or the +Nh fallback)

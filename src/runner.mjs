@@ -4,8 +4,9 @@ import { spawn } from 'node:child_process';
  * Build the claude CLI argv (no prompt — that goes via stdin). Pure → testable.
  * Adapted from the original `autoresume` runner.
  */
-export function buildClaudeArgs({ sessionId, permissionMode, model, extraArgs }) {
-  const args = ['-p', '--output-format', 'json'];
+export function buildClaudeArgs({ sessionId, permissionMode, model, extraArgs, streamJson }) {
+  const args = ['-p', '--output-format', streamJson ? 'stream-json' : 'json'];
+  if (streamJson) args.push('--verbose'); // claude requires --verbose with -p stream-json
 
   if (sessionId) {
     args.push('--resume', sessionId);
@@ -53,9 +54,11 @@ export function runClaudeOnce({
   attemptTimeoutSec = 0,
   extraArgs,
   claudeCmd = 'claude', // test hook: point at a mock script
+  streamJson = false,
+  onStdout, // optional live chunk callback (used by the split-screen view)
 }) {
   return new Promise((resolve) => {
-    const args = buildClaudeArgs({ sessionId, permissionMode, model, extraArgs });
+    const args = buildClaudeArgs({ sessionId, permissionMode, model, extraArgs, streamJson });
     const isWin = process.platform === 'win32';
 
     let child;
@@ -90,7 +93,17 @@ export function runClaudeOnce({
           }, attemptTimeoutSec * 1000)
         : null;
 
-    child.stdout.on('data', (d) => (stdout += d.toString()));
+    child.stdout.on('data', (d) => {
+      const s = d.toString();
+      stdout += s;
+      if (onStdout) {
+        try {
+          onStdout(s);
+        } catch {
+          /* live view must never crash the run */
+        }
+      }
+    });
     child.stderr.on('data', (d) => (stderr += d.toString()));
     child.on('error', (err) => done({ code: -1, stdout, stderr: `${stderr}\n${String(err)}`, spawnError: true }));
     child.on('close', (code) => done({ code: code ?? -1, stdout, stderr }));

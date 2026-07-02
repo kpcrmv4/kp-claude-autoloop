@@ -81,3 +81,65 @@ export function makePanelPainter(stream = process.stdout) {
     prevLines = lines.length;
   };
 }
+
+/** Header shown while Claude is actively working (split-screen top). */
+export function renderWorkHeader({ project, cycles, maxCycles, plan, startedAt, activity, now = Date.now() }) {
+  const elapsed = humanizeLeft(now - startedAt).replace(/^0 ชม\. /, '');
+  const L = [];
+  L.push(`${C.green}▶${C.reset} ${C.bold}${C.cyan}AUTOLOOP — กำลังทำงาน${C.reset} ${C.dim}รอบที่ ${cycles + 1}/${maxCycles} · ใช้เวลาไป ${elapsed}${C.reset}`);
+  L.push(`   ${C.dim}งาน${C.reset}           ${C.bold}${project}${C.reset}`);
+  if (plan) {
+    L.push(`   ${C.dim}แผนคืบหน้า${C.reset}    ${progressBar(plan.pct)} ${C.bold}${plan.done}/${plan.total}${C.reset} ข้อ (${plan.pct}%)`);
+    if (plan.nextItem) L.push(`   ${C.dim}ขั้นตอนถัดไป${C.reset}  ${C.magenta}${plan.nextItem}${C.reset}`);
+  }
+  L.push(`   ${C.dim}กิจกรรมล่าสุด${C.reset} ${C.yellow}${(activity || 'เริ่มรอบ…').slice(0, 70)}${C.reset}`);
+  L.push(`${C.dim}${'─'.repeat(56)} log ของ Claude ↓${C.reset}`);
+  return L;
+}
+
+/**
+ * Split-screen: pin a header at the top rows via an ANSI scroll region
+ * (DECSTBM) so normal output scrolls underneath. Windows Terminal /
+ * modern consoles support this.
+ */
+export function makeSplitScreen(stream = process.stdout) {
+  let headerHeight = 0;
+  let active = false;
+
+  const paintHeader = (lines) => {
+    // save cursor → home → repaint each header line (clearing it) → restore
+    let out = '\x1b7\x1b[H';
+    for (const ln of lines) out += `\x1b[2K${ln}\n`;
+    out += '\x1b8';
+    stream.write(out);
+  };
+
+  return {
+    open(headerLines) {
+      headerHeight = headerLines.length;
+      const rows = stream.rows || 40;
+      // clear screen, paint header, then confine scrolling to below it
+      stream.write('\x1b[2J\x1b[H');
+      stream.write(headerLines.join('\n') + '\n');
+      stream.write(`\x1b[${headerHeight + 1};${rows}r`);
+      stream.write(`\x1b[${rows};1H`);
+      active = true;
+    },
+    update(headerLines) {
+      if (!active) return;
+      headerHeight = Math.max(headerHeight, headerLines.length);
+      paintHeader(headerLines);
+    },
+    writeLine(text) {
+      if (!active) return stream.write(text + '\n');
+      stream.write(text + '\n');
+    },
+    close() {
+      if (!active) return;
+      active = false;
+      stream.write('\x1b[r'); // reset scroll region
+      const rows = stream.rows || 40;
+      stream.write(`\x1b[${rows};1H\n`);
+    },
+  };
+}
