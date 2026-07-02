@@ -1,3 +1,4 @@
+autoloop.secrets.json
 # runtime artifacts — machine-local, never commit
 *.autoloop.json
 *.autoloop.log

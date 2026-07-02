@@ -44,6 +44,8 @@ The engine lives where this skill was installed — find the repo root (the fold
 
    Permission notes: headless runs can't answer permission prompts. `acceptEdits` + the project's existing `.claude/settings.local.json` allowlist usually suffices. **Never** suggest `--dangerously-skip-permissions`. Recommend a first test with `--max-cycles 1`, then check the log for denied tools.
 
+4b. **Notifications (optional but recommended for overnight runs)** — if `<root>/autoloop.secrets.json` exists (or TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID env), autoloop notifies on: start, limit-hit (with wake time), resumed, done, error, stopped. Verify with `node <root>/bin/autoloop.mjs notify-test` before a long run. Never read or echo the secrets file contents.
+
 5. **Tell the user how to watch/stop:**
    - `node <root>/bin/autoloop.mjs status --state-file "<state file>"`
    - `node <root>/bin/autoloop.mjs stop   --state-file "<state file>"`

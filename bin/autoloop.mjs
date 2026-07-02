@@ -11,6 +11,8 @@ import { runEngine } from '../src/engine.mjs';
 import { setLogFile, log } from '../src/log.mjs';
 import { listSessions, formatSessions } from '../src/sessions.mjs';
 import { readRuntime, runtimePath } from '../src/state.mjs';
+import { loadSecrets, defaultSecretsPath } from '../src/secrets.mjs';
+import { resolveTargets, notifyAll } from '../src/notify.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +25,7 @@ USAGE
   autoloop status --state-file <file>                          show runtime state + log tail
   autoloop stop   --state-file <file>                          stop a detached run
   autoloop list                                                list recent Claude sessions
+  autoloop notify-test                                         send a test notification (Telegram/webhook)
 
 REQUIRED
   --cwd <dir>            project folder of the target session
@@ -46,6 +49,10 @@ OPTIONS
   --permission-mode <m>  claude --permission-mode (e.g. acceptEdits)
   --model <name>         claude --model override
   --log <file>           append logs to a file
+  --secrets <file>       notify secrets json (default: <repo>/autoloop.secrets.json)
+                         shape: {"telegram":{"token":"...","chatId":"..."},"webhookUrl":"..."}
+                         or env: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID / AUTOLOOP_WEBHOOK_URL
+  --no-notify            disable notifications even if secrets exist
   --claude-cmd <cmd>     override the claude binary (testing hook)
   --help                 this help
 
@@ -75,6 +82,8 @@ function parseArgs(argv) {
     permissionMode: null,
     model: null,
     logFile: null,
+    secretsFile: null,
+    noNotify: false,
     claudeCmd: 'claude',
     help: false,
   };
@@ -107,6 +116,8 @@ function parseArgs(argv) {
       case '--permission-mode': cfg.permissionMode = take(); break;
       case '--model': cfg.model = take(); break;
       case '--log': cfg.logFile = resolve(take()); break;
+      case '--secrets': cfg.secretsFile = resolve(take()); break;
+      case '--no-notify': cfg.noNotify = true; break;
       case '--claude-cmd': cfg.claudeCmd = take(); break;
       case '--help': case '-h': cfg.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
@@ -144,8 +155,15 @@ function toRunArgv(cfg) {
   if (cfg.permissionMode) out.push('--permission-mode', cfg.permissionMode);
   if (cfg.model) out.push('--model', cfg.model);
   if (cfg.logFile) out.push('--log', cfg.logFile);
+  if (cfg.secretsFile) out.push('--secrets', cfg.secretsFile);
+  if (cfg.noNotify) out.push('--no-notify');
   if (cfg.claudeCmd !== 'claude') out.push('--claude-cmd', cfg.claudeCmd);
   return out;
+}
+
+function buildNotifyTargets(cfg) {
+  if (cfg.noNotify) return [];
+  return resolveTargets(loadSecrets(cfg.secretsFile));
 }
 
 async function main() {
@@ -168,6 +186,27 @@ async function main() {
       return 0;
     }
 
+    case 'notify-test': {
+      const targets = buildNotifyTargets(cfg);
+      if (!targets.length) {
+        process.stdout.write(
+          `[autoloop] ไม่พบช่องทางแจ้งเตือน — สร้าง ${cfg.secretsFile || defaultSecretsPath}\n` +
+            `  {"telegram":{"token":"<bot token>","chatId":"<chat id>"}}\n` +
+            `  หรือ set env TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID / AUTOLOOP_WEBHOOK_URL\n`,
+        );
+        return 1;
+      }
+      const results = await notifyAll(targets, {
+        status: 'test',
+        project: 'autoloop',
+        message: 'ทดสอบการแจ้งเตือน — ถ้าเห็นข้อความนี้แปลว่าใช้งานได้ ✅',
+      });
+      results.forEach((r, i) =>
+        process.stdout.write(`[autoloop] ${targets[i].kind}: ${r.ok ? `OK (${r.status})` : `FAILED ${JSON.stringify(r)}`}\n`),
+      );
+      return results.every((r) => r.ok) ? 0 : 1;
+    }
+
     case 'run': {
       try {
         requireRunConfig(cfg);
@@ -176,11 +215,12 @@ async function main() {
         return 2;
       }
       if (cfg.logFile) setLogFile(cfg.logFile);
-      log('info', `autoloop run · cwd=${cfg.cwd} · state=${cfg.stateFile} · marker="${cfg.stopMarker}"`);
+      const notifyTargets = buildNotifyTargets(cfg);
+      log('info', `autoloop run · cwd=${cfg.cwd} · state=${cfg.stateFile} · marker="${cfg.stopMarker}" · notify=${notifyTargets.map((t) => t.kind).join('+') || 'off'}`);
       if (!cfg.sessionId) {
         log('warn', 'ไม่ได้ระบุ --session → จะ --continue แชทล่าสุดใน cwd ซึ่งอาจไม่ใช่ตัวที่ตั้งใจ (แนะนำ: autoloop list แล้วระบุ --session)');
       }
-      return await runEngine(cfg);
+      return await runEngine({ ...cfg, notifyTargets });
     }
 
     case 'start': {

@@ -94,6 +94,21 @@ node bin/autoloop.mjs stop   --state-file "F:\my-proj\docs\STATE.md"
 | `--timeout` | 0 | ฆ่ารอบที่ค้างเกิน N วินาที |
 | `--claude-cmd` | `claude` | override binary (ไว้เทสต์ด้วย mock) |
 
+## แจ้งเตือน Telegram / Webhook
+
+autoloop ยิงแจ้งเตือนเองที่จังหวะสำคัญ (ไม่สแปมทุกรอบ): **เริ่มขับ · โดน limit (บอกเวลาจะตื่น) · ฟื้นกลับมาทำต่อสำเร็จ · งานจบ (แยกเหตุผล marker/ครบเพดาน) · error ที่ต้องมาดู · ถูกสั่งหยุด**
+
+```bash
+# ตั้งค่า: สร้าง autoloop.secrets.json ที่ root (gitignored แล้ว) — ดู autoloop.secrets.example.json
+{ "telegram": { "token": "<จาก @BotFather>", "chatId": "<chat id>" } }
+# หรือใช้ env: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID / AUTOLOOP_WEBHOOK_URL (Discord/Slack/generic ก็ได้)
+
+# ทดสอบก่อนใช้จริง
+node bin/autoloop.mjs notify-test
+
+# ปิดชั่วคราว: --no-notify
+```
+
 ## กติกาที่ทำให้ปลอดภัย
 
 - **1 session = 1 คนขับ** — ระหว่าง autoloop รัน ห้ามเปิดแชทนั้นคุยมือ/รันซ้อน (ตัว `start` กันซ้อนให้ระดับหนึ่งด้วย pid probe)
