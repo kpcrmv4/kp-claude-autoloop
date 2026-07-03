@@ -61,8 +61,6 @@ OPTIONS
   --model-rules <file>   เลือก model/effort อัตโนมัติต่อรอบ ตาม "ขั้นตอนถัดไป" ใน state
                          (JSON: {default:{model,effort}, rules:[{match,model,effort}]}
                           match = regex เทียบกับ checkbox ตัวถัดไป · hot-reload ทุกรอบ)
-  --remote-control       เปิด Remote Control ของ Claude Code ทุกรอบ — แอบดู/สั่ง session
-                         ต่อจากมือถือผ่าน claude.ai ได้ระหว่าง loop ทำงาน
   --claude-arg <flag>    ส่ง flag อื่นทะลุไปหา claude ตรง ๆ (ใส่ซ้ำได้ทีละชิ้น)
                          เช่น --claude-arg --fallback-model --claude-arg claude-sonnet-5
   --log <file>           append logs to a file
@@ -142,7 +140,6 @@ function parseArgs(argv) {
       case '--model': cfg.model = take(); break;
       case '--effort': cfg.effort = take(); break;
       case '--model-rules': cfg.modelRulesFile = resolve(take()); break;
-      case '--remote-control': cfg.extraArgs.push('--remote-control'); break;
       case '--claude-arg': cfg.extraArgs.push(take()); break;
       case '--log': cfg.logFile = resolve(take()); break;
       case '--secrets': cfg.secretsFile = resolve(take()); break;
@@ -363,7 +360,7 @@ async function main() {
       const child = spawn(
         process.execPath,
         [resolve(__dirname, 'autoloop.mjs'), ...toRunArgv({ ...cfg, logFile })],
-        { detached: true, stdio: ['ignore', out, out] },
+        { detached: true, stdio: ['ignore', out, out], windowsHide: true },
       );
       child.unref();
       process.stdout.write(

@@ -218,7 +218,6 @@ export function startArgsFromPayload(p) {
   args.push('--permission-mode', p.permissionMode || 'acceptEdits');
   // notify default = on when secrets exist (engine behavior) — only explicit opt-out disables
   if (p.notify === false || p.notify === 'false' || p.notify === 'off') args.push('--no-notify');
-  if (p.remoteControl === true || p.remoteControl === 'true' || p.remoteControl === 'on') args.push('--remote-control');
   return args;
 }
 

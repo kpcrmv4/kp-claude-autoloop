@@ -22,10 +22,13 @@ export function fmtDateTime(ms) {
 /** Human-readable one-message form of an event (ภาษาคน, ไม่ใช่ศัพท์ dev). */
 export function formatEventText(event) {
   const header = STATUS_HEADER[event.status] || `ℹ️ ${event.status}`;
+  const plan = event.plan && event.plan.total ? event.plan : null;
   return [
     header,
     event.project ? `งาน: ${event.project}` : null,
     event.message ? event.message : null,
+    plan ? `ความคืบหน้า: ${plan.done}/${plan.total} ข้อ (${plan.pct}%)` : null,
+    plan && plan.nextItem ? `ข้อถัดไป: ${String(plan.nextItem).slice(0, 100)}` : null,
     event.cycles != null ? `ทำไปแล้ว ${event.cycles} รอบ` : null,
     event.resumeAt ? `จะตื่นมาทำต่อ: ${fmtDateTime(event.resumeAt)}` : null,
   ]

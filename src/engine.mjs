@@ -76,7 +76,8 @@ export async function runEngine(cfg) {
   const notify = async (event) => {
     if (!targets.length) return;
     try {
-      const results = await notifyAll(targets, { project, ...event });
+      // every message carries live plan progress — the phone-visible progress bar
+      const results = await notifyAll(targets, { project, plan: readPlanProgress(cfg.stateFile), ...event });
       const failed = results.filter((r) => !r.ok && !r.skipped);
       if (failed.length) log('warn', `notify ล้มเหลว ${failed.length}/${results.length}: ${JSON.stringify(failed[0])}`);
     } catch {

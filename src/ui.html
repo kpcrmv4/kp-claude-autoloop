@@ -93,7 +93,6 @@
   <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></symbol>
-  <symbol id="i-phone" viewBox="0 0 24 24"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
@@ -149,11 +148,6 @@
           <svg class="ic text-(--dim)"><use href="#i-bell"/></svg>
           <span data-i18n="notifyLabel">Telegram notify (start / limit / resume / done)</span>
           <span id="notifyHint" class="text-(--dim) text-[.75rem]"></span>
-        </label>
-        <label class="flex items-center gap-2 !mb-0 !text-[.82rem] !text-(--text) cursor-pointer">
-          <input type="checkbox" id="rcChk">
-          <svg class="ic text-(--dim)"><use href="#i-phone"/></svg>
-          <span data-i18n="rcLabel">Remote Control — watch/steer the session from your phone via claude.ai</span>
         </label>
       </div>
       <div class="md:col-span-2"><button class="primary inline-flex items-center gap-1.5" type="submit"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="startBtn">Start (detached)</span></button></div>
@@ -330,7 +324,6 @@ const L = {
     modelRec: 'claude-sonnet-5 (recommended)', modelDefault: '— machine default (quota burn risk) —', effortDefault: '— default —',
     notifyLabel: 'Telegram notify (start / limit / resume / done)',
     notifyOn: 'bot configured ✓', notifyOff: 'bot not set up — click the gear above',
-    rcLabel: 'Remote Control — watch/steer the session from your phone via claude.ai',
     startBtn: 'Start (detached)', starting: 'Starting…', started: 'Started', startFail: 'Failed to start',
     useFolder: 'Use this folder', pickDrive: 'pick a drive', browseFail: 'cannot open',
     scanFound: 'found the plan files — form filled in for you',
@@ -379,7 +372,6 @@ const L = {
     modelRec: 'claude-sonnet-5 (แนะนำ)', modelDefault: '— default เครื่อง (เสี่ยงเผาโควตา) —', effortDefault: '— default —',
     notifyLabel: 'แจ้งเตือน Telegram (เริ่ม/ติดลิมิต/กลับมา/จบ)',
     notifyOn: 'ตั้งค่า bot แล้ว ✓', notifyOff: 'ยังไม่ได้ตั้งค่า bot — กดปุ่มเฟืองด้านบน',
-    rcLabel: 'Remote Control — แอบดู/สั่ง session จากมือถือผ่าน claude.ai',
     startBtn: 'เริ่มทำงาน (detached)', starting: 'กำลังเริ่ม…', started: 'เริ่มแล้ว', startFail: 'เริ่มไม่สำเร็จ',
     useFolder: 'ใช้โฟลเดอร์นี้', pickDrive: 'เลือกไดรฟ์', browseFail: 'เปิดไม่ได้',
     scanFound: 'เจอไฟล์แผนงานแล้ว — เติมฟอร์มให้เรียบร้อย',
@@ -546,7 +538,6 @@ $('#startForm').addEventListener('submit', async (e) => {
   // only send notify when the checkbox is usable — a disabled (no-bot) checkbox must NOT
   // force --no-notify, or it silently kills webhookUrl/env notification targets
   if (!$('#notifyChk').disabled) f.notify = $('#notifyChk').checked;
-  f.remoteControl = $('#rcChk').checked;
   const out = $('#startOut');
   out.style.color = 'var(--dim)'; out.textContent = t('starting');
   const { ok, data } = await post('/api/start', f);

@@ -59,7 +59,7 @@ test('startArgsFromPayload: full payload → correct argv (unknown keys ignored)
   ]);
 });
 
-test('startArgsFromPayload: notify=false → --no-notify · remoteControl=true → --remote-control', () => {
+test('startArgsFromPayload: notify=false → --no-notify · absent = engine default', () => {
   const stateFile = join(dir, 'STATE.md');
   writeFileSync(stateFile, '- [ ] unit 1\n');
   const base = { cwd: dir, stateFile };
@@ -67,8 +67,6 @@ test('startArgsFromPayload: notify=false → --no-notify · remoteControl=true �
   assert.ok(startArgsFromPayload({ ...base, notify: 'false' }).includes('--no-notify'));
   assert.ok(!startArgsFromPayload({ ...base, notify: true }).includes('--no-notify'));
   assert.ok(!startArgsFromPayload(base).includes('--no-notify')); // absent = engine default (on if secrets)
-  assert.ok(startArgsFromPayload({ ...base, remoteControl: true }).includes('--remote-control'));
-  assert.ok(!startArgsFromPayload(base).includes('--remote-control'));
 });
 
 // ── telegram helpers (pure — no network) ──

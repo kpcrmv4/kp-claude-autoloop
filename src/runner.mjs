@@ -65,8 +65,10 @@ export function runClaudeOnce({
 
     let child;
     try {
+      // windowsHide: a detached (console-less) engine would otherwise pop a black
+      // console window for every round's claude spawn
       child = isWin
-        ? spawn(buildWinCommand(claudeCmd, args), { cwd, shell: true, stdio: ['pipe', 'pipe', 'pipe'] })
+        ? spawn(buildWinCommand(claudeCmd, args), { cwd, shell: true, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
         : spawn(claudeCmd, args, { cwd, shell: claudeCmd.includes(' '), stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (err) {
       resolve({ code: -1, stdout: '', stderr: String(err), spawnError: true });

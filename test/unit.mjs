@@ -10,6 +10,7 @@ import { setLogFile, log } from '../src/log.mjs';
 import { replyAnnouncesMarker } from '../src/state.mjs';
 import { classifyResult } from '../src/limit.mjs';
 import { withLoopProtocol } from '../src/engine.mjs';
+import { formatEventText } from '../src/notify.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'autoloop-unit-'));
 const writeRules = (name, obj) => {
@@ -114,6 +115,21 @@ test('unreadable rules file → warn + CLI fallback', () => {
 
 // ── strict stop-marker: บรรทัดสุดท้ายของคำตอบต้องเป็น marker เป๊ะ ๆ ──
 const M = 'AUTOLOOP: COMPLETE';
+
+test('formatEventText: plan progress + next item ride along on every notification', () => {
+  const text = formatEventText({
+    status: 'limited',
+    project: 'my-proj',
+    message: 'พักรอครั้งที่ 1',
+    plan: { done: 24, total: 44, pct: 55, nextItem: 'P3.5 วันหยุดชดเชย' },
+    cycles: 3,
+  });
+  assert.ok(text.includes('ความคืบหน้า: 24/44 ข้อ (55%)'));
+  assert.ok(text.includes('ข้อถัดไป: P3.5 วันหยุดชดเชย'));
+  // no plan (state file unreadable) → lines simply absent, message still sends
+  const bare = formatEventText({ status: 'done', project: 'x', plan: null });
+  assert.ok(!bare.includes('ความคืบหน้า'));
+});
 
 test('withLoopProtocol: appended when prompt lacks the marker, skipped when it covers it', () => {
   const bare = 'อ่าน state แล้วทำต่อ';
