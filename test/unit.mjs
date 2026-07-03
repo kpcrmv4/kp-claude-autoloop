@@ -9,6 +9,7 @@ import { loadModelRules, pickModelForCycle } from '../src/model-rules.mjs';
 import { setLogFile, log } from '../src/log.mjs';
 import { replyAnnouncesMarker } from '../src/state.mjs';
 import { classifyResult } from '../src/limit.mjs';
+import { withLoopProtocol } from '../src/engine.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'autoloop-unit-'));
 const writeRules = (name, obj) => {
@@ -113,6 +114,18 @@ test('unreadable rules file → warn + CLI fallback', () => {
 
 // ── strict stop-marker: บรรทัดสุดท้ายของคำตอบต้องเป็น marker เป๊ะ ๆ ──
 const M = 'AUTOLOOP: COMPLETE';
+
+test('withLoopProtocol: appended when prompt lacks the marker, skipped when it covers it', () => {
+  const bare = 'อ่าน state แล้วทำต่อ';
+  const out = withLoopProtocol(bare, M);
+  assert.ok(out.includes(M), 'protocol with marker must be appended');
+  assert.ok(out.includes('ห้าม push'), 'no-push rule included');
+  assert.ok(out.startsWith(bare), 'original prompt kept first');
+  const aware = `ทำต่อ ครบแล้วเติม ${M} ท้ายไฟล์`;
+  assert.equal(withLoopProtocol(aware, M), aware); // project wrote its own protocol → untouched
+  assert.equal(withLoopProtocol(bare, M, false), bare); // --no-protocol
+  assert.equal(withLoopProtocol(bare, ''), bare); // no marker configured → nothing to enforce
+});
 
 test('replyAnnouncesMarker: exact reply / marker as last line → true', () => {
   assert.equal(replyAnnouncesMarker(M, M), true);

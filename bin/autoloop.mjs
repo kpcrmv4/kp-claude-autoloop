@@ -44,6 +44,8 @@ OPTIONS
   --prompt-file <file>   read round prompt from a file (re-read each cycle; wins over --prompt)
   --stop-marker <text>   stop when state file (or the reply) contains this
                          (default: "AUTOLOOP: COMPLETE")
+  --no-protocol          อย่าเติม "กติกา loop" ท้าย prompt อัตโนมัติ (ปกติ autoloop เติมให้
+                         เมื่อ prompt ไม่ได้พูดถึง stop marker — กันลืม marker/กัน push/กัน scheduler)
   --max-cycles <n>       max successful rounds (default 30)
   --max-waits <n>        max limit-sleeps before giving up (default 20)
   --fallback-wait-min <m> sleep this long when reset time can't be parsed (default 300 = 5h)
@@ -102,6 +104,7 @@ function parseArgs(argv) {
     logFile: null,
     secretsFile: null,
     noNotify: false,
+    noProtocol: false,
     claudeCmd: 'claude',
     detached: false, // internal: set by `start` — log to file only (stdout is already the log file)
     port: null,
@@ -144,6 +147,7 @@ function parseArgs(argv) {
       case '--log': cfg.logFile = resolve(take()); break;
       case '--secrets': cfg.secretsFile = resolve(take()); break;
       case '--no-notify': cfg.noNotify = true; break;
+      case '--no-protocol': cfg.noProtocol = true; break;
       case '--claude-cmd': cfg.claudeCmd = take(); break;
       case '--detached': cfg.detached = true; break;
       case '--port': cfg.port = Number(take()); break;
@@ -190,6 +194,7 @@ function toRunArgv(cfg) {
   if (cfg.logFile) out.push('--log', cfg.logFile);
   if (cfg.secretsFile) out.push('--secrets', cfg.secretsFile);
   if (cfg.noNotify) out.push('--no-notify');
+  if (cfg.noProtocol) out.push('--no-protocol');
   if (cfg.claudeCmd !== 'claude') out.push('--claude-cmd', cfg.claudeCmd);
   // stdout/stderr of the detached child are redirected to the log file —
   // tell the child so log() doesn't also append the same line (duplication)

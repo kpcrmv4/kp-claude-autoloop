@@ -21,6 +21,24 @@ function humanizeWait(ms) {
   return rem ? `${h}h ${rem}m` : `${h}h`;
 }
 
+/**
+ * The loop contract every project needs, appended to each round prompt so a
+ * minimal/custom prompt can't break the loop (forgotten stop marker = loop
+ * that never announces completion and burns rounds to max-cycles).
+ * Skipped when the prompt already mentions the stop marker — that means the
+ * project wrote its own loop-aware protocol (e.g. the generated round-prompt).
+ */
+export function withLoopProtocol(prompt, stopMarker, enabled = true) {
+  if (!enabled || !stopMarker || !prompt || prompt.includes(stopMarker)) return prompt;
+  return (
+    `${prompt}\n\n[กติกา loop — autoloop เติมให้อัตโนมัติ]\n` +
+    `- ถ้ามีงานค้างจากรอบก่อน (ตายกลางคัน) ให้เก็บให้จบก่อนขึ้นงานใหม่\n` +
+    `- จบชุดงานแล้ว อัปเดต checklist ใน state file แล้วจบเทิร์นทันที — ห้ามตั้ง wakeup/scheduler ใด ๆ (autoloop เป็นคนปลุกรอบถัดไปเอง)\n` +
+    `- commit ได้เฉพาะ local เท่านั้น ห้าม push เด็ดขาด\n` +
+    `- เมื่องานครบทุกข้อแล้วจริง ๆ: เติมบรรทัด "${stopMarker}" ท้าย state file และตอบกลับแค่ ${stopMarker}`
+  );
+}
+
 /** Re-read the prompt each cycle so the user can hot-edit the prompt file mid-run. */
 function resolvePrompt(cfg) {
   if (cfg.promptFile) {
@@ -118,7 +136,7 @@ export async function runEngine(cfg) {
         return 0;
       }
 
-      const prompt = resolvePrompt(cfg);
+      const prompt = withLoopProtocol(resolvePrompt(cfg), cfg.stopMarker, !cfg.noProtocol);
       const planNow = readPlanProgress(cfg.stateFile);
 
       // ── per-cycle model/effort: match the NEXT work item against rules
