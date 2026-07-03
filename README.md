@@ -45,6 +45,16 @@ git clone https://github.com/<you>/claude-autoloop
 เสร็จแล้วสร้าง **ชอร์ตคัตบน Desktop** — ดับเบิลคลิกเปิด dashboard ได้เลย (ถ้า server เดิมยังรันค้างอยู่ จะไม่เปิดซ้ำ แค่พาเข้าเบราว์เซอร์)
 หรือรันเองผ่าน CLI: `node bin/autoloop.mjs doctor`
 
+**ให้ Claude / AI agent ติดตั้งแทน?** วางลิงก์ repo นี้แล้วสั่ง "ติดตั้งให้หน่อย" ได้เลย — ขั้นตอนที่ถูกคือ:
+
+```bash
+git clone <repo-url> && cd claude-autoloop
+node bin/autoloop.mjs doctor --yes    # ตรวจ node/npm/claude/git + ติดตั้งที่ขาด + สร้างชอร์ตคัต Desktop (ไม่ถามอะไร)
+node bin/autoloop.mjs ui --open       # เปิด dashboard ให้ผู้ใช้ทันที
+```
+
+> ⚠ agent ห้ามรัน `setup.cmd` — ไฟล์นั้นเป็นแบบโต้ตอบ (รอพิมพ์ Y/Enter) มีไว้ให้มนุษย์ดับเบิลคลิก รันใน shell แบบ headless จะค้าง
+
 ติดตั้ง skill ให้ Claude Code เรียกใช้เป็น (`/autoloop`):
 
 ```bash
