@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { runEngine } from '../src/engine.mjs';
 import { setLogFile, log } from '../src/log.mjs';
 import { listSessions, formatSessions } from '../src/sessions.mjs';
-import { readRuntime, runtimePath } from '../src/state.mjs';
+import { readRuntime, runtimePath, requestStop, updateRuntime } from '../src/state.mjs';
 import { loadSecrets, defaultSecretsPath } from '../src/secrets.mjs';
 import { resolveTargets, notifyAll } from '../src/notify.mjs';
 
@@ -23,7 +23,8 @@ USAGE
   autoloop run    --cwd <dir> --state-file <file> [options]   run in this terminal
   autoloop start  --cwd <dir> --state-file <file> [options]   run detached (background)
   autoloop status --state-file <file>                          show runtime state + log tail
-  autoloop stop   --state-file <file>                          stop a detached run
+  autoloop stop   --state-file <file> [--force]                stop a detached run — ปกติจบสวยหลังงานปัจจุบันเสร็จ
+                                                               --force = ตัดทิ้งทันที (ฆ่า node ทั้ง tree รวม claude ที่กำลังวิ่ง)
   autoloop list                                                list recent Claude sessions
   autoloop ui [--port 4900] [--open]                           localhost dashboard (ดู/สั่ง run ทุกตัวจากเบราว์เซอร์)
                                                                --open = เปิดเบราว์เซอร์ให้เลย; ถ้ามี server เดิมรันค้างอยู่จะไม่เปิดซ้ำ
@@ -108,6 +109,7 @@ function parseArgs(argv) {
     port: null,
     open: false,
     yes: false,
+    force: false,
     help: false,
   };
 
@@ -150,6 +152,7 @@ function parseArgs(argv) {
       case '--port': cfg.port = Number(take()); break;
       case '--open': cfg.open = true; break;
       case '--yes': case '-y': cfg.yes = true; break;
+      case '--force': cfg.force = true; break;
       case '--help': case '-h': cfg.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
@@ -408,18 +411,31 @@ async function main() {
       }
       cfg.stateFile = resolve(cfg.stateFile);
       const rt = readRuntime(cfg.stateFile);
-      if (!rt || !rt.pid) {
+      let alive = false;
+      if (rt && rt.pid) {
+        try {
+          process.kill(rt.pid, 0);
+          alive = true;
+        } catch { /* dead */ }
+      }
+      if (!alive) {
+        if (rt && ['running', 'sleeping'].includes(rt.status)) updateRuntime(cfg.stateFile, { status: 'stopped', doneReason: 'process-gone' });
         process.stdout.write('[autoloop] ไม่พบ process ที่รันอยู่\n');
         return 1;
       }
-      try {
-        process.kill(rt.pid);
-        process.stdout.write(`[autoloop] ส่งสัญญาณหยุดไปที่ pid ${rt.pid} แล้ว (จะหยุดหลังจบรอบ/การรอปัจจุบัน)\n`);
+      if (cfg.force) {
+        // Windows-safe hard kill: take the whole tree so the round's claude dies too
+        if (process.platform === 'win32') spawn('taskkill', ['/T', '/F', '/PID', String(rt.pid)], { stdio: 'ignore' });
+        else process.kill(rt.pid, 'SIGKILL');
+        updateRuntime(cfg.stateFile, { status: 'stopped', doneReason: 'force-stop' });
+        process.stdout.write(`[autoloop] ตัดทิ้งทันที (pid ${rt.pid} + ลูกทั้งหมด) — งานค้างจะถูกกู้ตอนรันรอบหน้า\n`);
         return 0;
-      } catch (err) {
-        process.stdout.write(`[autoloop] pid ${rt.pid} ไม่อยู่แล้ว (${err.code || err.message})\n`);
-        return 1;
       }
+      // graceful: drop the stop-signal file; the engine exits after the current round
+      requestStop(cfg.stateFile);
+      updateRuntime(cfg.stateFile, { stopRequestedAt: new Date().toISOString() });
+      process.stdout.write(`[autoloop] สั่งหยุดแล้ว — pid ${rt.pid} จะหยุดเองหลังงานปัจจุบันเสร็จ (ตัดทิ้งทันที: --force)\n`);
+      return 0;
     }
 
     default:

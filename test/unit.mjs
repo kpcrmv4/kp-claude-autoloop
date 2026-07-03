@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadModelRules, pickModelForCycle } from '../src/model-rules.mjs';
 import { setLogFile, log } from '../src/log.mjs';
-import { replyAnnouncesMarker } from '../src/state.mjs';
+import { replyAnnouncesMarker, requestStop, stopSignalPresent, clearStopSignal } from '../src/state.mjs';
 import { classifyResult } from '../src/limit.mjs';
 import { withLoopProtocol } from '../src/engine.mjs';
 import { formatEventText } from '../src/notify.mjs';
@@ -115,6 +115,17 @@ test('unreadable rules file → warn + CLI fallback', () => {
 
 // ── strict stop-marker: บรรทัดสุดท้ายของคำตอบต้องเป็น marker เป๊ะ ๆ ──
 const M = 'AUTOLOOP: COMPLETE';
+
+test('stop signal: request → present → clear roundtrip (cooperative stop on Windows)', () => {
+  const sf = join(dir, 'SIG-STATE.md');
+  writeFileSync(sf, '- [ ] x\n');
+  assert.equal(stopSignalPresent(sf), false);
+  requestStop(sf);
+  assert.equal(stopSignalPresent(sf), true);
+  clearStopSignal(sf);
+  assert.equal(stopSignalPresent(sf), false);
+  clearStopSignal(sf); // clearing twice must not throw
+});
 
 test('formatEventText: plan progress + next item ride along on every notification', () => {
   const text = formatEventText({

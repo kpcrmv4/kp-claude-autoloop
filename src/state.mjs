@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 
 /**
  * Two kinds of state, deliberately separated:
@@ -14,6 +14,35 @@ import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 
 export function runtimePath(stateFile) {
   return `${stateFile}.autoloop.json`;
+}
+
+/**
+ * Cooperative stop signal (`<state-file>.autoloop.stop`). Windows has no real
+ * signals — process.kill() there is TerminateProcess (instant death mid-round),
+ * so "stop gracefully" is a file the engine polls at round boundaries instead.
+ */
+export function stopSignalPath(stateFile) {
+  return `${stateFile}.autoloop.stop`;
+}
+
+export function requestStop(stateFile) {
+  writeFileSync(stopSignalPath(stateFile), new Date().toISOString());
+}
+
+export function stopSignalPresent(stateFile) {
+  try {
+    return existsSync(stopSignalPath(stateFile));
+  } catch {
+    return false;
+  }
+}
+
+export function clearStopSignal(stateFile) {
+  try {
+    unlinkSync(stopSignalPath(stateFile));
+  } catch {
+    /* already gone */
+  }
 }
 
 /** Does the work-state file contain the stop marker? (missing file = not stopped) */

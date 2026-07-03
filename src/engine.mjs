@@ -4,7 +4,7 @@ import { runClaudeOnce } from './runner.mjs';
 import { classifyResult, parseResetMs } from './limit.mjs';
 import { sleepUntil } from './sleep.mjs';
 import { log } from './log.mjs';
-import { stopMarkerPresent, replyAnnouncesMarker, updateRuntime } from './state.mjs';
+import { stopMarkerPresent, replyAnnouncesMarker, updateRuntime, stopSignalPresent, clearStopSignal } from './state.mjs';
 import { notifyAll } from './notify.mjs';
 import { readPlanProgress, renderWaitPanel, makePanelPainter, renderWorkHeader, makeSplitScreen } from './tui.mjs';
 import { formatStreamEvent, makeJsonlSplitter } from './stream.mjs';
@@ -93,6 +93,17 @@ export async function runEngine(cfg) {
   };
   process.on('SIGINT', onSigint);
 
+  // cooperative stop: `autoloop stop` / dashboard drop a stop-signal file — the
+  // only way to stop gracefully on Windows, where cross-process kill = instant death
+  clearStopSignal(cfg.stateFile); // a stale signal from a previous run must not kill this one
+  const stopWanted = () => {
+    if (!stopRequested && stopSignalPresent(cfg.stateFile)) {
+      stopRequested = true;
+      log('warn', 'ได้รับคำสั่งหยุด — จะหยุดหลังจบงานปัจจุบัน');
+    }
+    return stopRequested;
+  };
+
   updateRuntime(cfg.stateFile, {
     pid: process.pid,
     status: 'running',
@@ -111,6 +122,9 @@ export async function runEngine(cfg) {
     resumeAt: null,
     lastCycleStartedAt: null,
     lastCycleFinishedAt: null,
+    stopRequestedAt: null,
+    activity: null,
+    activityAt: null,
   });
   registerRun(cfg.stateFile, { cwd: cfg.cwd }); // ให้ dashboard (autoloop ui) มองเห็น run นี้
   await notify({ status: 'start', message: `จะทำงานเองสูงสุด ${cfg.maxCycles} รอบจนกว่างานจะเสร็จ · ถ้าโควตาหมดจะพักรอแล้วกลับมาทำต่อเองอัตโนมัติ` });
@@ -128,7 +142,7 @@ export async function runEngine(cfg) {
   }
 
   try {
-    while (!stopRequested) {
+    while (!stopWanted()) {
       // 1) stop marker beats everything — checked BEFORE burning a turn
       if (stopMarkerPresent(cfg.stateFile, cfg.stopMarker)) {
         log('info', `พบ stop marker "${cfg.stopMarker}" ใน ${cfg.stateFile} — งานจบแล้ว ✅`);
@@ -194,6 +208,17 @@ export async function runEngine(cfg) {
           activity: lastActivity,
           model: picked.model ? `${picked.model}${picked.effort ? '/' + picked.effort : ''}` : null,
         });
+      // live pulse for the dashboard: throttled "what Claude is doing right now"
+      // written to the sidecar — long rounds otherwise look frozen from outside
+      let lastBeatMs = 0;
+      const recordActivity = (activity) => {
+        lastActivity = activity;
+        const now = Date.now();
+        if (now - lastBeatMs >= 3000) {
+          lastBeatMs = now;
+          updateRuntime(cfg.stateFile, { activity, activityAt: new Date(now).toISOString() });
+        }
+      };
       let onStdout;
       if (live) {
         split = makeSplitScreen();
@@ -201,8 +226,13 @@ export async function runEngine(cfg) {
         headerTimer = setInterval(() => split.update(headerLines()), 1000);
         onStdout = makeJsonlSplitter((obj) => {
           const { lines, activity } = formatStreamEvent(obj);
-          if (activity) lastActivity = activity;
+          if (activity) recordActivity(activity);
           for (const ln of lines) split.writeLine(ln);
+        });
+      } else {
+        onStdout = makeJsonlSplitter((obj) => {
+          const { activity } = formatStreamEvent(obj);
+          if (activity) recordActivity(activity);
         });
       }
 
@@ -212,6 +242,7 @@ export async function runEngine(cfg) {
       } finally {
         if (headerTimer) clearInterval(headerTimer);
         if (split) split.close();
+        updateRuntime(cfg.stateFile, { activity: null, activityAt: null }); // round over — no stale "now doing"
       }
       const verdict = classifyResult(res);
 
@@ -270,7 +301,7 @@ export async function runEngine(cfg) {
           });
           paint(renderWaitPanel(panelState()));
           await sleepUntil(target, {
-            shouldStop: () => stopRequested,
+            shouldStop: stopWanted,
             tickMs: 1000,
             onTick: () => paint(renderWaitPanel(panelState())),
           });
@@ -279,7 +310,8 @@ export async function runEngine(cfg) {
           log('info', stopRequested ? '⏹ ยกเลิกการรอ — หยุดตามคำสั่งผู้ใช้' : '⏰ ถึงเวลาแล้ว — กลับมาทำงานต่อ');
         } else {
           await sleepUntil(target, {
-            shouldStop: () => stopRequested,
+            shouldStop: stopWanted,
+            tickMs: 15_000, // สั้นพอให้คำสั่งหยุดจากหน้าเว็บมีผลไว แม้กำลังหลับรอโควตา
             onTick: (left) => log('debug', `… นอนรอ limit reset เหลือ ~${Math.ceil(left / 60_000)} นาที`),
           });
         }
@@ -327,7 +359,7 @@ export async function runEngine(cfg) {
           return 0;
         }
         if (cfg.cooldownSec > 0) {
-          await sleepUntil(Date.now() + cfg.cooldownSec * 1000, { shouldStop: () => stopRequested });
+          await sleepUntil(Date.now() + cfg.cooldownSec * 1000, { shouldStop: stopWanted, tickMs: 5000 });
         }
         continue;
       }
@@ -341,11 +373,12 @@ export async function runEngine(cfg) {
       return 1;
     }
 
-    log('info', 'หยุดตามคำสั่งผู้ใช้ (SIGINT)');
-    updateRuntime(cfg.stateFile, { status: 'stopped', doneReason: 'sigint' });
+    log('info', 'หยุดตามคำสั่งผู้ใช้');
+    updateRuntime(cfg.stateFile, { status: 'stopped', doneReason: 'user-stop' });
     await notify({ status: 'stopped', message: 'หยุดเรียบร้อย งานที่ทำไว้ถูกเก็บครบ กลับมาสั่งต่อเมื่อไหร่ก็ได้', cycles });
     return 0;
   } finally {
     process.removeListener('SIGINT', onSigint);
+    clearStopSignal(cfg.stateFile);
   }
 }

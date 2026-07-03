@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readRegistry, unregisterRun } from './registry.mjs';
-import { readRuntime } from './state.mjs';
+import { readRuntime, updateRuntime, requestStop } from './state.mjs';
 import { readPlanProgress } from './tui.mjs';
 import { listSessions } from './sessions.mjs';
 import { loadSecrets, defaultSecretsPath } from './secrets.mjs';
@@ -59,6 +59,10 @@ export function collectRuns() {
       resumeAt: rt.resumeAt || null,
       doneReason: rt.doneReason || null,
       lastError: rt.lastError ? String(rt.lastError).slice(-300) : null,
+      lastCycleStartedAt: rt.lastCycleStartedAt || null,
+      stopRequestedAt: rt.stopRequestedAt || null,
+      activity: rt.activity || null,
+      activityAt: rt.activityAt || null,
       model: rt.model || null,
       effort: rt.effort || null,
       modelRule: rt.modelRule || null,
@@ -337,16 +341,35 @@ async function handle(req, res) {
       return;
     }
     if (path === '/api/stop') {
-      const rt = readRuntime(body.stateFile || '');
-      if (!rt || !rt.pid) {
+      const stateFile = body.stateFile || '';
+      const rt = readRuntime(stateFile);
+      if (!rt || !rt.pid || !pidAlive(rt.pid)) {
+        // nothing alive — normalize a stale "running" sidecar so the card stops saying died-mid-run
+        if (rt && ['running', 'sleeping'].includes(rt.status)) updateRuntime(stateFile, { status: 'stopped', doneReason: 'process-gone' });
         json(res, 404, { error: 'ไม่พบ process ที่รันอยู่' });
         return;
       }
+      if (body.force) {
+        // hard kill the whole tree — engine AND the claude round it spawned.
+        // (Windows cross-process "signals" are TerminateProcess anyway; do it properly.)
+        try {
+          if (process.platform === 'win32') spawn('taskkill', ['/T', '/F', '/PID', String(rt.pid)], { stdio: 'ignore' });
+          else process.kill(rt.pid, 'SIGKILL');
+          updateRuntime(stateFile, { status: 'stopped', doneReason: 'force-stop' });
+          json(res, 200, { ok: true, forced: true, pid: rt.pid });
+        } catch (err) {
+          json(res, 410, { error: `pid ${rt.pid}: ${err.code || err.message}` });
+        }
+        return;
+      }
+      // graceful: drop the stop-signal file — the engine finishes the current
+      // round, wraps up (sidecar+notify), then exits on its own
       try {
-        process.kill(rt.pid);
-        json(res, 200, { ok: true, pid: rt.pid });
+        requestStop(stateFile);
+        updateRuntime(stateFile, { stopRequestedAt: new Date().toISOString() });
+        json(res, 200, { ok: true, graceful: true, pid: rt.pid });
       } catch (err) {
-        json(res, 410, { error: `pid ${rt.pid} ไม่อยู่แล้ว (${err.code || err.message})` });
+        json(res, 500, { error: err.message });
       }
       return;
     }

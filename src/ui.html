@@ -310,6 +310,10 @@ const L = {
     waits: (n) => `limit hit <b>${n}</b>×`,
     modelMeta: (m, rule) => `model this round <b>${m}</b>${rule ? ` <span title="${esc(rule)}">(by rule)</span>` : ''}`,
     wakeIn: 'wakes in', doneBecause: 'ended:', next: 'Next:',
+    nowDoing: 'now:', ago: (s) => (s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago`),
+    roundMin: (m) => `this round <b>${m} min</b>`,
+    stopSoon: 'stop requested — finishing the current job first…',
+    forceBtn: 'Kill now', forceConfirm: 'Kill it right now, mid-work? The node/claude processes are terminated immediately; unfinished work gets recovered on the next run.',
     stopBtn: 'Stop (after the current job finishes)', forgetBtn: 'Remove from list',
     logSummary: 'latest log', noLog: '(no log yet)',
     rulesSummary: 'model rules — live-editable (engine hot-reloads next round)',
@@ -358,6 +362,10 @@ const L = {
     waits: (n) => `โดนลิมิต <b>${n}</b> ครั้ง`,
     modelMeta: (m, rule) => `model รอบนี้ <b>${m}</b>${rule ? ` <span title="${esc(rule)}">(ตาม rule)</span>` : ''}`,
     wakeIn: 'ตื่นในอีก', doneBecause: 'จบเพราะ', next: 'ถัดไป:',
+    nowDoing: 'ตอนนี้:', ago: (s) => (s < 60 ? `${s} วิก่อน` : `${Math.floor(s / 60)} นาทีก่อน`),
+    roundMin: (m) => `รอบนี้เดินมา <b>${m} นาที</b>`,
+    stopSoon: 'สั่งหยุดแล้ว — รอเก็บงานปัจจุบันให้จบก่อน…',
+    forceBtn: 'ปิดทันที', forceConfirm: 'ปิดทันทีกลางคันเลยไหม? โปรเซส node/claude ที่กำลังทำงานจะถูกตัดทิ้ง งานที่ค้างจะถูกกู้ตอนรันรอบถัดไป',
     stopBtn: 'หยุด (หลังงานปัจจุบันเสร็จ)', forgetBtn: 'ลบออกจากลิสต์',
     logSummary: 'log ล่าสุด', noLog: '(ยังไม่มี log)',
     rulesSummary: 'model rules — แก้สดได้ (engine hot-reload รอบถัดไป)',
@@ -448,13 +456,21 @@ function runCard(r) {
       ${r.waits ? `<span>${t('waits', r.waits)}</span>` : ''}
       ${r.sessionId ? `<span>session <b>${esc(r.sessionId.slice(0, 8))}</b></span>` : ''}
       ${r.model ? `<span>${t('modelMeta', esc(r.model) + (r.effort ? '/' + esc(r.effort) : ''), r.modelRule)}</span>` : ''}
+      ${st === 'running' && r.lastCycleStartedAt ? `<span>${t('roundMin', Math.max(0, Math.floor((Date.now() - new Date(r.lastCycleStartedAt).getTime()) / 60000)))}</span>` : ''}
       ${st === 'sleeping' && r.resumeAt ? `<span>${t('wakeIn')} <span class="countdown">${countdown(r.resumeAt)}</span></span>` : ''}
       ${st === 'done' && r.doneReason ? `<span>${t('doneBecause')} <b>${esc(r.doneReason)}</b></span>` : ''}
     </div>
     ${r.plan && r.plan.nextItem ? `<div class="next text-[.82rem] text-(--dim) mt-1.5">${t('next')} <b>${esc(r.plan.nextItem)}</b></div>` : ''}
+    ${st === 'running' && r.activity ? `<div class="text-[.82rem] text-(--dim) mt-1.5"><span style="color:var(--green)">●</span> ${t('nowDoing')} <b>${esc(r.activity)}</b>${r.activityAt ? ` <span class="text-[.75rem]">· ${t('ago', Math.max(0, Math.floor((Date.now() - new Date(r.activityAt).getTime()) / 1000)))}</span>` : ''}</div>` : ''}
     ${st === 'error' && r.lastError ? `<div class="text-[.82rem] mt-1.5" style="color:var(--red)">${esc(r.lastError)}</div>` : ''}
-    <div class="flex gap-2 mt-3">
-      ${r.alive ? `<button class="danger inline-flex items-center gap-1.5" onclick="stopRun('${escA(r.stateFile)}')">${icon('square')}${t('stopBtn')}</button>` : `<button onclick="forgetRun('${escA(r.stateFile)}')">${t('forgetBtn')}</button>`}
+    <div class="flex gap-2 mt-3 items-center flex-wrap">
+      ${r.alive
+        ? (r.stopRequestedAt
+          ? `<span class="text-[.78rem]" style="color:var(--amber)">${t('stopSoon')}</span>
+             <button class="danger inline-flex items-center gap-1.5" onclick="stopRun('${escA(r.stateFile)}', true)">${icon('x')}${t('forceBtn')}</button>`
+          : `<button class="inline-flex items-center gap-1.5" onclick="stopRun('${escA(r.stateFile)}')">${icon('square')}${t('stopBtn')}</button>
+             <button class="danger inline-flex items-center gap-1.5" onclick="stopRun('${escA(r.stateFile)}', true)">${icon('x')}${t('forceBtn')}</button>`)
+        : `<button onclick="forgetRun('${escA(r.stateFile)}')">${t('forgetBtn')}</button>`}
     </div>
     <details class="mt-2.5" ${open ? 'open' : ''} ontoggle="toggleLog(this, '${escA(r.stateFile)}')">
       <summary>${t('logSummary')}</summary>
@@ -528,7 +544,11 @@ async function post(path, body) {
   return { ok: res.ok, data: await res.json() };
 }
 
-async function stopRun(stateFile) { await post('/api/stop', { stateFile }); refresh(); }
+async function stopRun(stateFile, force = false) {
+  if (force && !confirm(t('forceConfirm'))) return;
+  await post('/api/stop', { stateFile, force });
+  refresh();
+}
 async function forgetRun(stateFile) { await post('/api/forget', { stateFile }); refresh(); }
 
 /* ── start form ── */

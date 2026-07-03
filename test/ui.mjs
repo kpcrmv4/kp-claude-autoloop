@@ -193,6 +193,28 @@ test('http: GET / = html · GET /api/runs = json · POST w/o header = 403 · bad
 
     const tw = await fetch(base + '/assets/tailwind.js');
     assert.equal(tw.status, 200); // vendored asset must be served (UI depends on it)
+
+    // graceful stop: alive pid → 200 + stop-signal file dropped (no kill)
+    const stopState = join(dir, 'STOPME.md');
+    writeFileSync(stopState, '- [ ] x\n');
+    writeFileSync(`${stopState}.autoloop.json`, JSON.stringify({ status: 'running', pid: process.pid }));
+    const g = await fetch(base + '/api/stop', {
+      method: 'POST', headers: { 'x-autoloop': '1', 'content-type': 'application/json' }, body: JSON.stringify({ stateFile: stopState }),
+    });
+    assert.equal(g.status, 200);
+    assert.equal((await g.json()).graceful, true);
+    assert.ok(readFileSync(`${stopState}.autoloop.stop`, 'utf8').length > 0, 'stop-signal file must exist');
+    assert.ok(JSON.parse(readFileSync(`${stopState}.autoloop.json`, 'utf8')).stopRequestedAt, 'sidecar records the request');
+
+    // dead pid → 404 and the stale running sidecar is normalized to stopped
+    const deadState = join(dir, 'DEAD.md');
+    writeFileSync(deadState, '- [ ] x\n');
+    writeFileSync(`${deadState}.autoloop.json`, JSON.stringify({ status: 'running', pid: 999999 }));
+    const d = await fetch(base + '/api/stop', {
+      method: 'POST', headers: { 'x-autoloop': '1', 'content-type': 'application/json' }, body: JSON.stringify({ stateFile: deadState }),
+    });
+    assert.equal(d.status, 404);
+    assert.equal(JSON.parse(readFileSync(`${deadState}.autoloop.json`, 'utf8')).status, 'stopped');
   } finally {
     await new Promise((r) => server.close(r)); // fully closed before exit — Windows libuv asserts otherwise
   }
