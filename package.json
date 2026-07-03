@@ -7,7 +7,7 @@
     "autoloop": "bin/autoloop.mjs"
   },
   "scripts": {
-    "test": "node test/unit.mjs && node test/smoke.mjs"
+    "test": "node test/unit.mjs && node test/ui.mjs && node test/smoke.mjs"
   },
   "engines": {
     "node": ">=18"

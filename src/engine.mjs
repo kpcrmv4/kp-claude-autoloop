@@ -9,6 +9,7 @@ import { notifyAll } from './notify.mjs';
 import { readPlanProgress, renderWaitPanel, makePanelPainter, renderWorkHeader, makeSplitScreen } from './tui.mjs';
 import { formatStreamEvent, makeJsonlSplitter } from './stream.mjs';
 import { loadModelRules, pickModelForCycle } from './model-rules.mjs';
+import { registerRun } from './registry.mjs';
 
 function humanizeWait(ms) {
   const s = Math.round(ms / 1000);
@@ -91,6 +92,7 @@ export async function runEngine(cfg) {
     lastCycleStartedAt: null,
     lastCycleFinishedAt: null,
   });
+  registerRun(cfg.stateFile, { cwd: cfg.cwd }); // ให้ dashboard (autoloop ui) มองเห็น run นี้
   await notify({ status: 'start', message: `จะทำงานเองสูงสุด ${cfg.maxCycles} รอบจนกว่างานจะเสร็จ · ถ้าโควตาหมดจะพักรอแล้วกลับมาทำต่อเองอัตโนมัติ` });
 
   let cycles = 0;

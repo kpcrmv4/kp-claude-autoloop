@@ -25,6 +25,7 @@ USAGE
   autoloop status --state-file <file>                          show runtime state + log tail
   autoloop stop   --state-file <file>                          stop a detached run
   autoloop list                                                list recent Claude sessions
+  autoloop ui [--port 4900]                                    localhost dashboard (ดู/สั่ง run ทุกตัวจากเบราว์เซอร์)
   autoloop notify-setup                                        interactive Telegram setup wizard (auto chat-id)
   autoloop notify-test                                         send a test notification (Telegram/webhook)
 
@@ -98,6 +99,7 @@ function parseArgs(argv) {
     noNotify: false,
     claudeCmd: 'claude',
     detached: false, // internal: set by `start` — log to file only (stdout is already the log file)
+    port: null,
     help: false,
   };
 
@@ -136,6 +138,7 @@ function parseArgs(argv) {
       case '--no-notify': cfg.noNotify = true; break;
       case '--claude-cmd': cfg.claudeCmd = take(); break;
       case '--detached': cfg.detached = true; break;
+      case '--port': cfg.port = Number(take()); break;
       case '--help': case '-h': cfg.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
@@ -217,6 +220,16 @@ async function main() {
       const sessions = await listSessions();
       process.stdout.write(formatSessions(sessions) + '\n');
       return 0;
+    }
+
+    case 'ui': {
+      const { startUiServer } = await import('../src/ui-server.mjs');
+      const { port } = await startUiServer({ port: cfg.port || 4900 });
+      process.stdout.write(
+        `[autoloop] dashboard: http://127.0.0.1:${port}\n` +
+          `  (bind 127.0.0.1 เท่านั้น — Ctrl+C เพื่อปิด; run ที่สั่งจากหน้านี้ไม่ตายตามตัว dashboard)\n`,
+      );
+      return await new Promise(() => {}); // serve until Ctrl+C
     }
 
     case 'notify-setup': {

@@ -42,7 +42,8 @@ const res = spawnSync(
   ],
   {
     encoding: 'utf8',
-    env: { ...process.env, MOCK_COUNTER_FILE: counterFile, MOCK_STATE_FILE: stateFile },
+    // AUTOLOOP_HOME → เก็บ registry ไว้ใน tmp ไม่แตะ ~/.autoloop จริงของเครื่อง
+    env: { ...process.env, MOCK_COUNTER_FILE: counterFile, MOCK_STATE_FILE: stateFile, AUTOLOOP_HOME: dir },
     timeout: 60_000,
   },
 );
