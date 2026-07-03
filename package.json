@@ -13,5 +13,7 @@
     "node": ">=18"
   },
   "keywords": ["claude", "claude-code", "usage-limit", "auto-resume", "loop", "agent"],
+  "author": "KP Webapp Studio (https://www.kpwebappstudio.tech)",
+  "homepage": "https://www.kpwebappstudio.tech",
   "license": "MIT"
 }
