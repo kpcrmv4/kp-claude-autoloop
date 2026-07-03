@@ -92,6 +92,7 @@ node bin/autoloop.mjs stop   --state-file "F:\my-proj\docs\STATE.md"
 | `--buffer` / `--min-retry` | 90 / 60 วินาที | กันตื่นเร็วไป / กันถี่ไป |
 | `--permission-mode` | — | ส่งต่อให้ claude (แนะนำ `acceptEdits`) |
 | `--model` / `--effort` | default ของเครื่อง | เลือก model (`claude-sonnet-5`/`opus`/…) และ effort (`low/medium/high`) ต่อการรัน — headless ไม่จำค่าที่ตั้งใน IDE ควรระบุเสมอ |
+| `--model-rules <file>` | — | **สลับ model/effort อัตโนมัติต่อรอบ** ตามความยากของงาน — regex เทียบกับ "ขั้นตอนถัดไป" ใน state (เช่น payroll→opus/max, งานทั่วไป→sonnet/high) hot-reload ทุกรอบ · ดู `examples/model-rules.example.json` |
 | `--claude-arg <x>` | — | ส่ง flag อื่นทะลุถึง claude (ใส่ซ้ำได้) เช่น `--fallback-model` |
 | `--timeout` | 0 | ฆ่ารอบที่ค้างเกิน N วินาที |
 | `--claude-cmd` | `claude` | override binary (ไว้เทสต์ด้วย mock) |

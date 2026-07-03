@@ -83,10 +83,12 @@ export function makePanelPainter(stream = process.stdout) {
 }
 
 /** Header shown while Claude is actively working (split-screen top). */
-export function renderWorkHeader({ project, cycles, maxCycles, plan, startedAt, activity, now = Date.now() }) {
+export function renderWorkHeader({ project, cycles, maxCycles, plan, startedAt, activity, model, now = Date.now() }) {
   const elapsed = humanizeLeft(now - startedAt).replace(/^0 ชม\. /, '');
   const L = [];
-  L.push(`${C.green}▶${C.reset} ${C.bold}${C.cyan}AUTOLOOP — กำลังทำงาน${C.reset} ${C.dim}รอบที่ ${cycles + 1}/${maxCycles} · ใช้เวลาไป ${elapsed}${C.reset}`);
+  L.push(
+    `${C.green}▶${C.reset} ${C.bold}${C.cyan}AUTOLOOP — กำลังทำงาน${C.reset} ${C.dim}รอบที่ ${cycles + 1}/${maxCycles} · ใช้เวลาไป ${elapsed}${model ? ` · ${model}` : ''}${C.reset}`,
+  );
   L.push(`   ${C.dim}งาน${C.reset}           ${C.bold}${project}${C.reset}`);
   if (plan) {
     L.push(`   ${C.dim}แผนคืบหน้า${C.reset}    ${progressBar(plan.pct)} ${C.bold}${plan.done}/${plan.total}${C.reset} ข้อ (${plan.pct}%)`);

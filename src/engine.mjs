@@ -8,6 +8,7 @@ import { stopMarkerPresent, updateRuntime } from './state.mjs';
 import { notifyAll } from './notify.mjs';
 import { readPlanProgress, renderWaitPanel, makePanelPainter, renderWorkHeader, makeSplitScreen } from './tui.mjs';
 import { formatStreamEvent, makeJsonlSplitter } from './stream.mjs';
+import { loadModelRules, pickModelForCycle } from './model-rules.mjs';
 
 function humanizeWait(ms) {
   const s = Math.round(ms / 1000);
@@ -101,9 +102,17 @@ export async function runEngine(cfg) {
 
       const prompt = resolvePrompt(cfg);
       const planNow = readPlanProgress(cfg.stateFile);
+
+      // ── per-cycle model/effort: match the NEXT work item against rules
+      //    (hot-reloaded each cycle so the user can tune mid-run) ──
+      const { rules, warn: rulesWarn } = loadModelRules(cfg.modelRulesFile);
+      if (rulesWarn) log('warn', rulesWarn);
+      const picked = pickModelForCycle(rules, planNow?.nextItem, { model: cfg.model, effort: cfg.effort });
+
       log(
         'info',
         `→ cycle ${cycles + 1}/${cfg.maxCycles} · ${cfg.sessionId ? 'resume ' + cfg.sessionId.slice(0, 8) : 'continue'}` +
+          ` · model ${picked.model || '(default)'}${picked.effort ? '/' + picked.effort : ''}${picked.matched ? ` (rule: ${picked.matched})` : ''}` +
           (planNow ? ` · แผน ${planNow.done}/${planNow.total} ข้อ (${planNow.pct}%)${planNow.nextItem ? ` · ถัดไป: ${planNow.nextItem}` : ''}` : ''),
       );
       updateRuntime(cfg.stateFile, { status: 'running', lastCycleStartedAt: new Date().toISOString() });
@@ -123,6 +132,7 @@ export async function runEngine(cfg) {
           plan: readPlanProgress(cfg.stateFile),
           startedAt: cycleStartedAt,
           activity: lastActivity,
+          model: picked.model ? `${picked.model}${picked.effort ? '/' + picked.effort : ''}` : null,
         });
       let onStdout;
       if (live) {
@@ -138,7 +148,7 @@ export async function runEngine(cfg) {
 
       let res;
       try {
-        res = await runClaudeOnce({ ...cfg, prompt, streamJson: true, onStdout });
+        res = await runClaudeOnce({ ...cfg, prompt, model: picked.model, effort: picked.effort, streamJson: true, onStdout });
       } finally {
         if (headerTimer) clearInterval(headerTimer);
         if (split) split.close();

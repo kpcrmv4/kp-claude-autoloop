@@ -1,0 +1,8 @@
+{
+  "default": { "model": "claude-sonnet-5", "effort": "high" },
+  "rules": [
+    { "match": "payroll|เงินเดือน|P4", "model": "claude-opus-4-8", "effort": "max" },
+    { "match": "gate|security|review", "model": "claude-opus-4-8", "effort": "high" },
+    { "match": "docs|i18n|polish", "model": "claude-sonnet-5", "effort": "medium" }
+  ]
+}

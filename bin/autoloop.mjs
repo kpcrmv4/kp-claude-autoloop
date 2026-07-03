@@ -51,6 +51,9 @@ OPTIONS
   --model <name>         claude --model (e.g. claude-sonnet-5 / claude-opus-4-8 / sonnet / opus)
                          ⚠ headless ไม่จำ model ที่ตั้งไว้ใน VS Code — อยากได้ตัวไหนให้ระบุเสมอ
   --effort <level>       claude --effort (e.g. low / medium / high)
+  --model-rules <file>   เลือก model/effort อัตโนมัติต่อรอบ ตาม "ขั้นตอนถัดไป" ใน state
+                         (JSON: {default:{model,effort}, rules:[{match,model,effort}]}
+                          match = regex เทียบกับ checkbox ตัวถัดไป · hot-reload ทุกรอบ)
   --claude-arg <flag>    ส่ง flag อื่นทะลุไปหา claude ตรง ๆ (ใส่ซ้ำได้ทีละชิ้น)
                          เช่น --claude-arg --fallback-model --claude-arg claude-sonnet-5
   --log <file>           append logs to a file
@@ -87,6 +90,7 @@ function parseArgs(argv) {
     permissionMode: null,
     model: null,
     effort: null,
+    modelRulesFile: null,
     extraArgs: [],
     logFile: null,
     secretsFile: null,
@@ -123,6 +127,7 @@ function parseArgs(argv) {
       case '--permission-mode': cfg.permissionMode = take(); break;
       case '--model': cfg.model = take(); break;
       case '--effort': cfg.effort = take(); break;
+      case '--model-rules': cfg.modelRulesFile = resolve(take()); break;
       case '--claude-arg': cfg.extraArgs.push(take()); break;
       case '--log': cfg.logFile = resolve(take()); break;
       case '--secrets': cfg.secretsFile = resolve(take()); break;
@@ -164,6 +169,7 @@ function toRunArgv(cfg) {
   if (cfg.permissionMode) out.push('--permission-mode', cfg.permissionMode);
   if (cfg.model) out.push('--model', cfg.model);
   if (cfg.effort) out.push('--effort', cfg.effort);
+  if (cfg.modelRulesFile) out.push('--model-rules', cfg.modelRulesFile);
   for (const a of cfg.extraArgs || []) out.push('--claude-arg', a);
   if (cfg.logFile) out.push('--log', cfg.logFile);
   if (cfg.secretsFile) out.push('--secrets', cfg.secretsFile);
