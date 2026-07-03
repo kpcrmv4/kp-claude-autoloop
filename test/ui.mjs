@@ -11,7 +11,7 @@ process.env.AUTOLOOP_HOME = join(dir, 'home');
 process.env.AUTOLOOP_SECRETS = join(dir, 'secrets.json'); // never touch the real secrets file
 
 const { registerRun, unregisterRun, readRegistry, registryPath } = await import('../src/registry.mjs');
-const { startArgsFromPayload, collectRuns, startUiServer, telegramStatus, mergeTelegramSecrets } = await import('../src/ui-server.mjs');
+const { startArgsFromPayload, collectRuns, startUiServer, telegramStatus, mergeTelegramSecrets, scanWorkflow } = await import('../src/ui-server.mjs');
 const { nodeVersionOk, buildInstallPlan } = await import('../src/doctor.mjs');
 
 const cases = [];
@@ -85,6 +85,34 @@ test('mergeTelegramSecrets: keeps other keys, replaces telegram', () => {
   const next = mergeTelegramSecrets({ webhookUrl: 'https://x', telegram: { token: 'old', chatId: '1' } }, { token: 'new', chatId: '2', botUsername: 'b' });
   assert.equal(next.webhookUrl, 'https://x');
   assert.deepEqual(next.telegram, { token: 'new', chatId: '2', botUsername: 'b' });
+});
+
+// ── workflow-file auto-scan ──
+test('scanWorkflow: finds plan files in docs/ and one level deeper, verifies checklist', async () => {
+  const { mkdirSync } = await import('node:fs');
+  const proj = join(dir, 'proj');
+  mkdirSync(join(proj, 'docs', 'hr'), { recursive: true });
+  writeFileSync(join(proj, 'docs', 'hr', 'HR-BUILD-STATE.md'), '- [ ] unit 1\n');
+  writeFileSync(join(proj, 'docs', 'round-prompt.txt'), 'do the next round');
+  writeFileSync(join(proj, 'docs', 'model-rules.json'), '{}');
+  const s = scanWorkflow(proj);
+  assert.match(s.stateFile, /HR-BUILD-STATE\.md$/);
+  assert.equal(s.stateHasChecklist, true);
+  assert.match(s.promptFile, /round-prompt\.txt$/);
+  assert.match(s.modelRules, /model-rules\.json$/);
+
+  // conventional name wins over loose matches
+  writeFileSync(join(proj, 'docs', 'BUILD-STATE.md'), 'no checklist here');
+  const s2 = scanWorkflow(proj);
+  assert.match(s2.stateFile, /[\\/]BUILD-STATE\.md$/);
+  assert.equal(s2.stateHasChecklist, false); // exists but empty → UI warns
+
+  const empty = join(dir, 'empty-proj');
+  mkdirSync(empty, { recursive: true });
+  const s3 = scanWorkflow(empty);
+  assert.equal(s3.stateFile, null);
+  assert.equal(s3.promptFile, null);
+  assert.equal(s3.modelRules, null);
 });
 
 // ── doctor helpers (pure) ──

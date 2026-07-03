@@ -96,6 +96,44 @@ export function browseDirs(path) {
   return { path: abs, parent: up === abs ? null : up, dirs };
 }
 
+/** Find workflow files in a project folder so the start form can auto-fill.
+ *  Scans cwd, cwd/docs, and one level of docs subfolders (e.g. docs/hr/). Read-only. */
+export function scanWorkflow(cwd) {
+  const root = resolve(cwd);
+  if (!statSync(root).isDirectory()) throw new Error('not a folder');
+  const dirs = [root, join(root, 'docs')];
+  try {
+    for (const e of readdirSync(join(root, 'docs'), { withFileTypes: true })) {
+      if (e.isDirectory()) dirs.push(join(root, 'docs', e.name));
+    }
+  } catch { /* no docs dir */ }
+
+  const files = [];
+  for (const d of dirs) {
+    try {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        if (e.isFile()) files.push(join(d, e.name));
+        if (files.length > 500) break; // huge folder — enough candidates already
+      }
+    } catch { /* unreadable dir */ }
+  }
+  const base = (p) => p.split(/[\\/]/).pop().toLowerCase();
+  // prefer the conventional names from the setup prompt, then any name-based match
+  const pick = (exact, loose) =>
+    files.find((p) => base(p) === exact) || files.find((p) => loose.test(base(p))) || null;
+
+  const stateFile = pick('build-state.md', /state.*\.md$/);
+  const promptFile = pick('round-prompt.txt', /prompt.*\.txt$/);
+  const modelRules = pick('model-rules.json', /(model-)?rules.*\.json$/);
+  let stateHasChecklist = false;
+  if (stateFile) {
+    try {
+      stateHasChecklist = /^\s*[-*] \[[ xX~]\]/m.test(readFileSync(stateFile, 'utf8'));
+    } catch { /* unreadable → treat as no checklist */ }
+  }
+  return { stateFile, stateHasChecklist, promptFile, modelRules };
+}
+
 /** Public (masked) view of the saved Telegram config — the token never leaves the server. */
 export function telegramStatus(secrets = loadSecrets()) {
   const tg = secrets.telegram || {};
@@ -230,6 +268,14 @@ async function handle(req, res) {
     const stateFile = url.searchParams.get('state') || '';
     const lines = Math.min(500, Number(url.searchParams.get('lines')) || 60);
     json(res, 200, { lines: logTail(stateFile, lines) });
+    return;
+  }
+  if (req.method === 'GET' && path === '/api/scan') {
+    try {
+      json(res, 200, scanWorkflow(url.searchParams.get('cwd') || ''));
+    } catch (err) {
+      json(res, 404, { error: err.message });
+    }
     return;
   }
   if (req.method === 'GET' && path === '/api/browse') {

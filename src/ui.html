@@ -120,7 +120,8 @@
     <form class="grid grid-cols-1 md:grid-cols-2 gap-3" id="startForm">
       <div class="md:col-span-2"><label data-i18n="cwdLabel">Project folder (--cwd)</label>
         <div class="flex gap-1.5"><input class="flex-1" name="cwd" id="cwdInput" placeholder="F:\my-proj" required>
-        <button type="button" onclick="openBrowse()" data-i18n-title="browseTitleAttr"><svg class="ic"><use href="#i-folder-open"/></svg></button></div></div>
+        <button type="button" onclick="openBrowse()" data-i18n-title="browseTitleAttr"><svg class="ic"><use href="#i-folder-open"/></svg></button></div>
+        <div class="text-[.75rem] mt-1" id="scanOut"></div></div>
       <div class="md:col-span-2"><label data-i18n="stateLabel">State file (checklist + stop marker)</label><input name="stateFile" placeholder="F:\my-proj\docs\STATE.md" required></div>
       <div class="md:col-span-2"><label data-i18n="sessionLabel">Session (recommended — empty = --continue latest chat in cwd)</label>
         <select name="session"><option value="" data-i18n="sessionNone">— latest chat in cwd —</option></select></div>
@@ -170,9 +171,10 @@
   <div class="px-4 py-4 overflow-y-auto max-h-[calc(86vh-3.4rem)]">
 
     <div data-lang="en">
-      <div class="step"><b>0 · Prepare the workflow in a Claude Code chat first (the most important step)</b>
-        This program doesn't plan the work — it just wakes Claude up to <i>continue</i>, round by round, following a plan you agreed on.
-        Open a Claude Code chat in the target project and paste this prompt so Claude creates the workflow files first:
+      <div class="step"><b>What is this?</b>
+        Claude Code normally works only while you sit and chat with it. This program keeps it working for you: it wakes Claude up round after round until the job is finished — and when your Claude quota runs out, it simply waits and continues by itself when the quota comes back.</div>
+      <div class="step"><b>0 · First, have Claude write the work plan (once per project)</b>
+        This program doesn't think up the work — Claude needs a plan to follow. Open a Claude Code chat in your project, then copy the message below and paste it into that chat. Claude will create all the plan files for you:
         <pre class="prompt" data-setup-prompt>Create an autoloop workflow for this project (create the actual files):
 1) docs/BUILD-PLAN.md — the full detailed plan, split into small work units, each with how to verify it
 2) docs/BUILD-STATE.md — a "- [ ]" checklist matching the plan (the loop reads/ticks this file), and agree that when every item is done you append the line "AUTOLOOP: COMPLETE" at the end of the file
@@ -181,16 +183,24 @@
 When done, tell me this chat's session id.</pre>
         <button type="button" class="inline-flex items-center gap-1.5" onclick="copyPrompt(this)"><svg class="ic"><use href="#i-copy"/></svg><span>Copy prompt</span></button>
       </div>
-      <div class="step"><b>1 · Pick the session</b> — the chat where you just ran step 0 (the dropdown in the form auto-fills the project folder). Don't chat manually in that session while the loop is running.</div>
-      <div class="step"><b>2 · Fill the form + Start</b> — point at the state file / prompt file / model rules that Claude created. If the state file has no checklist yet, the system won't let you start.</div>
-      <div class="step"><b>3 · Watch this page</b> — cards show progress / the model the rules picked / a countdown while quota-limited. The Stop button = graceful stop after the current round. Model rules are live-editable from the card (applies next round).</div>
-      <div class="step"><b>End conditions</b> — the loop stops by itself when the state file contains AUTOLOOP: COMPLETE (work truly done) or max cycles is reached. Quota hit = it sleeps and resumes automatically.</div>
+      <div class="step"><b>1 · Come back here and pick that chat</b>
+        In the form below, open the <b style="display:inline">Session</b> dropdown and pick the chat you just used — the project folder fills in by itself.
+        One rule: while the loop is running, don't open that chat and type into it yourself, or the two of you will step on each other's work.</div>
+      <div class="step"><b>2 · Press Start</b>
+        Once the project folder is set, the system looks for the plan files Claude created and fills in the rest of the form automatically. If it can't find them, you'll get a warning — that just means step 0 hasn't been done yet.
+        Check the fields, press <b style="display:inline">Start</b>, and you can close this page — the work keeps going without it.</div>
+      <div class="step"><b>3 · Let it run — check in whenever you like</b>
+        Each job's card shows how much is done, what it's working on right now, and which AI model it's using. If your Claude quota runs out, you'll see a countdown to when it resumes — you don't need to do anything, it continues on its own.
+        Want to stop? Press <b style="display:inline">Stop</b> — it finishes the current round cleanly first, so nothing breaks halfway.</div>
+      <div class="step"><b>When does it finish?</b>
+        When every item in the plan is done, Claude writes <code>AUTOLOOP: COMPLETE</code> at the end of the plan file and the loop stops by itself (with a Telegram message, if you've set that up). If it reaches the round limit (Max cycles) first, it pauses and waits for you to send it another batch.</div>
     </div>
 
     <div data-lang="th">
-      <div class="step"><b>0 · เตรียม workflow ในแชท Claude Code ก่อน (ขั้นที่สำคัญที่สุด)</b>
-        โปรแกรมนี้ไม่ได้คิดแผนเอง — มันแค่ปลุก Claude ให้ทำงาน "ต่อ" ทีละรอบตามแผนที่ตกลงกันไว้
-        เปิดแชท Claude Code ในโปรเจกต์ที่จะทำ แล้ววาง prompt นี้ให้ Claude สร้างไฟล์ workflow ให้ครบก่อน:
+      <div class="step"><b>โปรแกรมนี้คืออะไร?</b>
+        ปกติ Claude Code จะทำงานเฉพาะตอนเรานั่งคุยกับมัน โปรแกรมนี้ทำให้มันทำงานแทนเราต่อเนื่อง: คอยปลุก Claude ให้ลุกมาทำงานต่อทีละรอบจนงานเสร็จ และถ้าโควตา Claude หมดกลางทาง มันจะรอแล้วกลับมาทำต่อเองเมื่อโควตากลับมา ไม่ต้องเฝ้า</div>
+      <div class="step"><b>0 · ให้ Claude เขียนแผนงานก่อน (ทำครั้งเดียวต่อโปรเจกต์)</b>
+        โปรแกรมนี้ไม่ได้คิดงานเอง — Claude ต้องมีแผนให้เดินตาม วิธีทำ: เปิดแชท Claude Code ในโปรเจกต์ที่จะให้ทำ แล้วคัดลอกข้อความด้านล่างไปวางในแชทนั้น Claude จะสร้างไฟล์แผนงานให้ครบเอง:
         <pre class="prompt" data-setup-prompt>สร้าง workflow สำหรับรัน autoloop ในโปรเจกต์นี้ (สร้างไฟล์จริงให้เลย):
 1) docs/BUILD-PLAN.md — แผนงานละเอียดทั้งหมด แตกเป็น work unit เล็ก ๆ พร้อมวิธี verify ของแต่ละข้อ
 2) docs/BUILD-STATE.md — checklist "- [ ]" ตามแผน (ตัว loop จะอ่านต่อ/ติ๊กจากไฟล์นี้) และตกลงกันว่า งานครบทุกข้อ = เติมบรรทัด "AUTOLOOP: COMPLETE" ท้ายไฟล์
@@ -199,10 +209,17 @@ When done, tell me this chat's session id.</pre>
 เสร็จแล้วบอก session id ของแชทนี้มาด้วย</pre>
         <button type="button" class="inline-flex items-center gap-1.5" onclick="copyPrompt(this)"><svg class="ic"><use href="#i-copy"/></svg><span>คัดลอก prompt</span></button>
       </div>
-      <div class="step"><b>1 · เลือก session</b> — แชทตัวที่เพิ่งสั่งข้อ 0 (dropdown ในฟอร์ม เลือกแล้วช่อง cwd เติมให้อัตโนมัติ) ห้ามเปิดแชทนั้นคุยมือระหว่าง loop รัน</div>
-      <div class="step"><b>2 · กรอกฟอร์ม + Start</b> — ชี้ state file / prompt file / model rules ตามที่ Claude สร้างไว้ · ถ้า state file ยังไม่มี checklist ระบบจะไม่ให้เริ่ม</div>
-      <div class="step"><b>3 · ตามดูที่หน้านี้</b> — การ์ดโชว์ progress / model ที่ rule เลือกให้ / นับถอยหลังตอนติดโควตา · ปุ่มหยุด = จบสวยหลังรอบปัจจุบัน · แก้ model rules สดได้จากการ์ด (มีผลรอบถัดไป)</div>
-      <div class="step"><b>เงื่อนไขจบ</b> — loop หยุดเองเมื่อ state file มีบรรทัด AUTOLOOP: COMPLETE (งานครบจริง) หรือครบ max cycles · โดนโควตา = พักรอแล้วกลับมาทำต่อเองอัตโนมัติ</div>
+      <div class="step"><b>1 · กลับมาหน้านี้ แล้วเลือกแชทที่เพิ่งคุย</b>
+        ในฟอร์มด้านล่าง เปิดช่อง <b style="display:inline">Session</b> แล้วเลือกแชทตัวที่เพิ่งสั่งไปเมื่อกี้ — ช่องโฟลเดอร์โปรเจกต์จะถูกเติมให้เอง
+        ข้อห้ามข้อเดียว: ระหว่างที่มันกำลังทำงาน อย่าเปิดแชทตัวนั้นเข้าไปพิมพ์คุยเอง เดี๋ยวงานตีกัน</div>
+      <div class="step"><b>2 · กดปุ่มเริ่มทำงาน</b>
+        พอใส่โฟลเดอร์โปรเจกต์แล้ว ระบบจะหาไฟล์แผนงานที่ Claude สร้างไว้ แล้วเติมช่องที่เหลือให้เองอัตโนมัติ ถ้าหาไม่เจอจะมีข้อความเตือน — แปลว่ายังไม่ได้ทำขั้น 0
+        ตรวจช่องให้ครบ กด <b style="display:inline">เริ่มทำงาน</b> เสร็จแล้วปิดหน้านี้ทิ้งได้เลย งานไม่หยุดตาม</div>
+      <div class="step"><b>3 · ปล่อยมันทำ แล้วแวะมาดูเมื่อไหร่ก็ได้</b>
+        การ์ดของแต่ละงานจะบอกว่าเสร็จไปกี่ข้อจากทั้งหมด ตอนนี้กำลังทำข้อไหน และใช้ AI ตัวไหนอยู่ ถ้าโควตา Claude หมด จะเห็นตัวนับถอยหลังว่าจะกลับมาทำต่อกี่โมง — ไม่ต้องทำอะไรทั้งนั้น มันไปต่อเอง
+        อยากหยุดก็กด <b style="display:inline">หยุด</b> — มันจะเก็บงานรอบที่ค้างให้จบเรียบร้อยก่อนค่อยหยุด งานไม่พังกลางทาง</div>
+      <div class="step"><b>แล้วมันจบเมื่อไหร่?</b>
+        เมื่องานในแผนเสร็จครบทุกข้อ Claude จะเขียนคำว่า <code>AUTOLOOP: COMPLETE</code> ปิดท้ายไฟล์แผน แล้วโปรแกรมก็หยุดเอง (พร้อมแจ้งเข้า Telegram ถ้าตั้งไว้) หรือถ้าทำครบจำนวนรอบที่ตั้งไว้ (Max cycles) ก่อนงานเสร็จ มันจะพักรอให้เรามาสั่งรอบเพิ่ม</div>
     </div>
 
   </div>
@@ -316,6 +333,9 @@ const L = {
     rcLabel: 'Remote Control — watch/steer the session from your phone via claude.ai',
     startBtn: 'Start (detached)', starting: 'Starting…', started: 'Started', startFail: 'Failed to start',
     useFolder: 'Use this folder', pickDrive: 'pick a drive', browseFail: 'cannot open',
+    scanFound: 'found the plan files — form filled in for you',
+    scanMissing: 'no work plan in this folder yet — ask Claude to create one first (step 0)',
+    scanHelpBtn: 'Open the guide',
     browseStale: 'dashboard server is an old build — close it and run "autoloop ui" again (or double-click the desktop shortcut)',
     copyBtn: 'Copy prompt', copied: '✓ copied — paste it in your Claude Code chat', copyFail: 'copy failed — select the text and copy manually',
     validateBtn: 'Check token', detectBtn: 'Find chat id', saveTestBtn: 'Save + send test', testBtn: 'Send test',
@@ -362,6 +382,9 @@ const L = {
     rcLabel: 'Remote Control — แอบดู/สั่ง session จากมือถือผ่าน claude.ai',
     startBtn: 'เริ่มทำงาน (detached)', starting: 'กำลังเริ่ม…', started: 'เริ่มแล้ว', startFail: 'เริ่มไม่สำเร็จ',
     useFolder: 'ใช้โฟลเดอร์นี้', pickDrive: 'เลือกไดรฟ์', browseFail: 'เปิดไม่ได้',
+    scanFound: 'เจอไฟล์แผนงานแล้ว — เติมฟอร์มให้เรียบร้อย',
+    scanMissing: 'โฟลเดอร์นี้ยังไม่มีแผนงาน — ต้องให้ Claude สร้างก่อน (ขั้น 0)',
+    scanHelpBtn: 'เปิดวิธีใช้',
     browseStale: 'ตัว dashboard เป็นรุ่นเก่า — ปิดแล้วเปิดใหม่ด้วย autoloop ui (หรือดับเบิลคลิกชอร์ตคัต)',
     copyBtn: 'คัดลอก prompt', copied: '✓ คัดลอกแล้ว — ไปวางในแชท Claude Code ได้เลย', copyFail: 'คัดลอกไม่ได้ — เลือกข้อความแล้ว copy เองได้เลย',
     validateBtn: 'ตรวจ token', detectBtn: 'หา chat id อัตโนมัติ', saveTestBtn: 'บันทึก + ส่งทดสอบ', testBtn: 'ส่งทดสอบ',
@@ -548,7 +571,7 @@ async function loadSessions() {
     sel.addEventListener('change', () => {
       const cwd = sel.selectedOptions[0]?.dataset.cwd;
       const input = $('#cwdInput');
-      if (cwd && !input.value.trim()) input.value = cwd;
+      if (cwd && !input.value.trim()) { input.value = cwd; scanCwd(); }
     });
   } catch { /* ignore */ }
 }
@@ -580,8 +603,45 @@ function openBrowse() {
   navBrowse($('#cwdInput').value.trim() || '');
 }
 function pickDir() {
-  if (browseCur) $('#cwdInput').value = browseCur;
+  if (browseCur) { $('#cwdInput').value = browseCur; scanCwd(); }
   document.getElementById('browseModal').close();
+}
+
+/* ── auto-scan: pick a cwd → find the plan files and fill the form ── */
+let scanSeq = 0;
+async function scanCwd() {
+  const cwd = $('#cwdInput').value.trim();
+  const out = $('#scanOut');
+  if (!cwd) { out.innerHTML = ''; return; }
+  const seq = ++scanSeq;
+  let res, data;
+  try {
+    res = await fetch('/api/scan?cwd=' + encodeURIComponent(cwd));
+    data = await res.json();
+  } catch { return; }
+  if (seq !== scanSeq) return; // a newer scan superseded this one
+  if (!res.ok) { out.innerHTML = ''; return; }
+  const form = $('#startForm');
+  const fill = (name, v) => {
+    const inp = form.elements[name];
+    // never clobber something the user typed — only fill empty or previously auto-filled fields
+    if (v && (!inp.value.trim() || inp.dataset.auto === '1')) { inp.value = v; inp.dataset.auto = '1'; }
+    else if (!v && inp.dataset.auto === '1') { inp.value = ''; delete inp.dataset.auto; }
+  };
+  fill('stateFile', data.stateFile);
+  fill('promptFile', data.promptFile);
+  fill('modelRules', data.modelRules);
+  if (data.stateFile && data.stateHasChecklist) {
+    out.innerHTML = `<span style="color:var(--green)">${icon('check')} ${t('scanFound')}</span>`;
+  } else {
+    out.innerHTML = `<span style="color:var(--amber)">${t('scanMissing')}</span> <button type="button" class="ml-1 !text-[.72rem] !py-0.5 !px-2" onclick="document.getElementById('helpModal').showModal()">${t('scanHelpBtn')}</button>`;
+  }
+}
+let scanTimer;
+$('#cwdInput').addEventListener('input', () => { clearTimeout(scanTimer); scanTimer = setTimeout(scanCwd, 600); });
+$('#cwdInput').addEventListener('change', scanCwd);
+for (const n of ['stateFile', 'promptFile', 'modelRules']) {
+  $('#startForm').elements[n].addEventListener('input', (e) => { delete e.target.dataset.auto; });
 }
 
 async function copyPrompt(btn) {
