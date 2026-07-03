@@ -51,13 +51,17 @@ function resolvePrompt(cfg) {
 export async function runEngine(cfg) {
   const targets = cfg.notifyTargets || [];
   const project = basename(cfg.cwd || '');
-  // fire-and-forget: notifications must never slow down or crash the loop
-  const notify = (event) => {
+  // awaited (≤10s timeout each) so terminal notifications aren't killed by
+  // process.exit before they reach Telegram; never throws, never crashes the loop
+  const notify = async (event) => {
     if (!targets.length) return;
-    notifyAll(targets, { project, ...event }).then((results) => {
+    try {
+      const results = await notifyAll(targets, { project, ...event });
       const failed = results.filter((r) => !r.ok && !r.skipped);
       if (failed.length) log('warn', `notify ล้มเหลว ${failed.length}/${results.length}: ${JSON.stringify(failed[0])}`);
-    });
+    } catch {
+      /* ignore */
+    }
   };
 
   let stopRequested = false;
@@ -79,7 +83,7 @@ export async function runEngine(cfg) {
     waits: 0,
     lastResult: null,
   });
-  notify({ status: 'start', message: `จะทำงานเองสูงสุด ${cfg.maxCycles} รอบจนกว่างานจะเสร็จ · ถ้าโควตาหมดจะพักรอแล้วกลับมาทำต่อเองอัตโนมัติ` });
+  await notify({ status: 'start', message: `จะทำงานเองสูงสุด ${cfg.maxCycles} รอบจนกว่างานจะเสร็จ · ถ้าโควตาหมดจะพักรอแล้วกลับมาทำต่อเองอัตโนมัติ` });
 
   let cycles = 0;
   let waits = 0;
@@ -91,7 +95,7 @@ export async function runEngine(cfg) {
       if (stopMarkerPresent(cfg.stateFile, cfg.stopMarker)) {
         log('info', `พบ stop marker "${cfg.stopMarker}" ใน ${cfg.stateFile} — งานจบแล้ว ✅`);
         updateRuntime(cfg.stateFile, { status: 'done', doneReason: 'stop-marker', cycles, waits });
-        notify({ status: 'done', message: 'งานครบทุกข้อตามแผนแล้ว ปิดจ๊อบเรียบร้อย 🎉', cycles });
+        await notify({ status: 'done', message: 'งานครบทุกข้อตามแผนแล้ว ปิดจ๊อบเรียบร้อย 🎉', cycles });
         return 0;
       }
 
@@ -166,7 +170,7 @@ export async function runEngine(cfg) {
           resumeAt: new Date(target).toISOString(),
           waits,
         });
-        notify({
+        await notify({
           status: 'limited',
           message: `พักรอครั้งที่ ${waits} (เพดาน ${cfg.maxWaits} ครั้ง)${reset == null ? ' · ระบบกะเวลาปลดล็อกไม่ได้ เลยใช้เวลาสำรองแทน' : ''}`,
           cycles,
@@ -177,7 +181,7 @@ export async function runEngine(cfg) {
         if (waits >= cfg.maxWaits) {
           log('error', `ครบ maxWaits (${cfg.maxWaits}) — หยุด`);
           updateRuntime(cfg.stateFile, { status: 'error', doneReason: 'max-waits' });
-          notify({ status: 'error', message: `พักรอโควตาครบ ${cfg.maxWaits} ครั้งแล้วยังไปต่อไม่ได้ — หยุดไว้ก่อน รบกวนเข้ามาเช็คครับ`, cycles });
+          await notify({ status: 'error', message: `พักรอโควตาครบ ${cfg.maxWaits} ครั้งแล้วยังไปต่อไม่ได้ — หยุดไว้ก่อน รบกวนเข้ามาเช็คครับ`, cycles });
           return 1;
         }
 
@@ -209,6 +213,15 @@ export async function runEngine(cfg) {
             onTick: (left) => log('debug', `… นอนรอ limit reset เหลือ ~${Math.ceil(left / 60_000)} นาที`),
           });
         }
+        // ping ทันทีที่ตื่น — ไม่ต้องรอรอบแรกสำเร็จ (ผู้ใช้จะได้รู้ว่ากลับมาแล้ว;
+        // ถ้าติดลิมิตซ้ำ/มีปัญหา จะมีข้อความตามมาเอง — เงียบ = กำลังทำงาน)
+        if (!stopRequested) {
+          await notify({
+            status: 'resumed',
+            message: 'ตื่นตามเวลาแล้ว เริ่มทำงานต่อ — เงียบหลังจากนี้ = กำลังทำงานปกติ (ติดลิมิตซ้ำ/มีปัญหาจะแจ้งอีกครั้ง)',
+            cycles,
+          });
+        }
         continue;
       }
 
@@ -223,7 +236,7 @@ export async function runEngine(cfg) {
           lastCycleFinishedAt: new Date().toISOString(),
         });
         if (wasLimited) {
-          notify({ status: 'resumed', message: 'โควตากลับมาแล้ว ทำงานรอบล่าสุดสำเร็จ เดินหน้าต่อเอง', cycles });
+          await notify({ status: 'resumed', message: 'ยืนยัน: รอบแรกหลังพักทำสำเร็จ โควตากลับมาเต็มตัว เดินหน้าต่อเอง', cycles });
           wasLimited = false;
         }
 
@@ -231,13 +244,13 @@ export async function runEngine(cfg) {
         if (cfg.stopMarker && verdict.text.includes(cfg.stopMarker)) {
           log('info', `agent ตอบ stop marker "${cfg.stopMarker}" — งานจบแล้ว ✅`);
           updateRuntime(cfg.stateFile, { status: 'done', doneReason: 'reply-marker' });
-          notify({ status: 'done', message: 'ตัวทำงานยืนยันว่างานเสร็จครบแล้ว 🎉', cycles });
+          await notify({ status: 'done', message: 'ตัวทำงานยืนยันว่างานเสร็จครบแล้ว 🎉', cycles });
           return 0;
         }
         if (cycles >= cfg.maxCycles) {
           log('info', 'ครบ maxCycles — หยุดตามเพดานที่ตั้งไว้');
           updateRuntime(cfg.stateFile, { status: 'done', doneReason: 'max-cycles' });
-          notify({ status: 'done', message: `ทำครบโควตา ${cfg.maxCycles} รอบที่ตั้งไว้แล้ว — งานอาจยังไม่จบ เข้ามาดูความคืบหน้าแล้วสั่งรอบเพิ่มได้`, cycles });
+          await notify({ status: 'done', message: `ทำครบโควตา ${cfg.maxCycles} รอบที่ตั้งไว้แล้ว — งานอาจยังไม่จบ เข้ามาดูความคืบหน้าแล้วสั่งรอบเพิ่มได้`, cycles });
           return 0;
         }
         if (cfg.cooldownSec > 0) {
@@ -251,13 +264,13 @@ export async function runEngine(cfg) {
       const tail = (res.stderr || res.stdout || '').slice(-1500).trim();
       if (tail) log('error', tail);
       updateRuntime(cfg.stateFile, { status: 'error', doneReason: 'claude-error', lastError: tail.slice(-500) });
-      notify({ status: 'error', message: `หยุดเพราะเจอปัญหา (ไม่ใช่เรื่องโควตา) — รายละเอียดท้ายนี้\n${tail.slice(-300)}`, cycles });
+      await notify({ status: 'error', message: `หยุดเพราะเจอปัญหา (ไม่ใช่เรื่องโควตา) — รายละเอียดท้ายนี้\n${tail.slice(-300)}`, cycles });
       return 1;
     }
 
     log('info', 'หยุดตามคำสั่งผู้ใช้ (SIGINT)');
     updateRuntime(cfg.stateFile, { status: 'stopped', doneReason: 'sigint' });
-    notify({ status: 'stopped', message: 'หยุดเรียบร้อย งานที่ทำไว้ถูกเก็บครบ กลับมาสั่งต่อเมื่อไหร่ก็ได้', cycles });
+    await notify({ status: 'stopped', message: 'หยุดเรียบร้อย งานที่ทำไว้ถูกเก็บครบ กลับมาสั่งต่อเมื่อไหร่ก็ได้', cycles });
     return 0;
   } finally {
     process.removeListener('SIGINT', onSigint);
