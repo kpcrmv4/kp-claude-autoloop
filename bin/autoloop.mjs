@@ -97,6 +97,7 @@ function parseArgs(argv) {
     secretsFile: null,
     noNotify: false,
     claudeCmd: 'claude',
+    detached: false, // internal: set by `start` — log to file only (stdout is already the log file)
     help: false,
   };
 
@@ -134,6 +135,7 @@ function parseArgs(argv) {
       case '--secrets': cfg.secretsFile = resolve(take()); break;
       case '--no-notify': cfg.noNotify = true; break;
       case '--claude-cmd': cfg.claudeCmd = take(); break;
+      case '--detached': cfg.detached = true; break;
       case '--help': case '-h': cfg.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
@@ -176,6 +178,9 @@ function toRunArgv(cfg) {
   if (cfg.secretsFile) out.push('--secrets', cfg.secretsFile);
   if (cfg.noNotify) out.push('--no-notify');
   if (cfg.claudeCmd !== 'claude') out.push('--claude-cmd', cfg.claudeCmd);
+  // stdout/stderr of the detached child are redirected to the log file —
+  // tell the child so log() doesn't also append the same line (duplication)
+  out.push('--detached');
   return out;
 }
 
@@ -251,7 +256,7 @@ async function main() {
         process.stderr.write(`[autoloop] ${err.message}\n`);
         return 2;
       }
-      if (cfg.logFile) setLogFile(cfg.logFile);
+      if (cfg.logFile) setLogFile(cfg.logFile, { fileOnly: cfg.detached });
       const notifyTargets = buildNotifyTargets(cfg);
       log('info', `autoloop run · cwd=${cfg.cwd} · state=${cfg.stateFile} · marker="${cfg.stopMarker}" · notify=${notifyTargets.map((t) => t.kind).join('+') || 'off'}`);
       if (!cfg.sessionId) {

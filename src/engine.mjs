@@ -83,6 +83,13 @@ export async function runEngine(cfg) {
     cycles: 0,
     waits: 0,
     lastResult: null,
+    // เคลียร์ซากจากรันก่อนหน้า (sidecar เป็น merge-patch — คีย์เก่าไม่หายเอง)
+    doneReason: null,
+    lastError: null,
+    limitedAt: null,
+    resumeAt: null,
+    lastCycleStartedAt: null,
+    lastCycleFinishedAt: null,
   });
   await notify({ status: 'start', message: `จะทำงานเองสูงสุด ${cfg.maxCycles} รอบจนกว่างานจะเสร็จ · ถ้าโควตาหมดจะพักรอแล้วกลับมาทำต่อเองอัตโนมัติ` });
 
@@ -137,7 +144,8 @@ export async function runEngine(cfg) {
           ` · model ${picked.model || '(default)'}${picked.effort ? '/' + picked.effort : ''}${picked.matched ? ` (rule: ${picked.matched})` : ''}` +
           (planNow ? ` · แผน ${planNow.done}/${planNow.total} ข้อ (${planNow.pct}%)${planNow.nextItem ? ` · ถัดไป: ${planNow.nextItem}` : ''}` : ''),
       );
-      updateRuntime(cfg.stateFile, { status: 'running', lastCycleStartedAt: new Date().toISOString() });
+      // resumeAt: null — พ้นช่วงหลับแล้ว อย่าปล่อยเวลาปลุกเก่าค้างให้คนอ่านสับสน
+      updateRuntime(cfg.stateFile, { status: 'running', lastCycleStartedAt: new Date().toISOString(), resumeAt: null });
 
       // ── live split-screen: pinned progress header on top, Claude's activity
       //    streaming underneath (TTY only; detached/log mode stays plain) ──

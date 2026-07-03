@@ -3,9 +3,17 @@ import { appendFileSync } from 'node:fs';
 const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 
 let logFilePath = null;
+let fileOnly = false;
 
-export function setLogFile(path) {
+/**
+ * @param {string|null} path append log lines to this file (null = off)
+ * @param {{fileOnly?: boolean}} [opts] fileOnly: skip the console stream —
+ *   used by detached mode where stdout is already redirected to the SAME
+ *   file (writing both would duplicate every line)
+ */
+export function setLogFile(path, opts = {}) {
   logFilePath = path || null;
+  fileOnly = Boolean(opts.fileOnly && logFilePath);
 }
 
 function stamp() {
@@ -19,8 +27,10 @@ export function log(level, ...parts) {
     .map((p) => (typeof p === 'string' ? p : JSON.stringify(p)))
     .join(' ');
   const line = `[${stamp()}] [${level.toUpperCase()}] ${body}`;
-  const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
-  stream.write(line + '\n');
+  if (!fileOnly) {
+    const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
+    stream.write(line + '\n');
+  }
   if (logFilePath) {
     try {
       appendFileSync(logFilePath, line + '\n');

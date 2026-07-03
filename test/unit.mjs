@@ -2,10 +2,11 @@
 // Unit tests for per-cycle model selection — the quota safety net.
 // Pure in-process (no subprocess, no quota). Run before the smoke test.
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadModelRules, pickModelForCycle } from '../src/model-rules.mjs';
+import { setLogFile, log } from '../src/log.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'autoloop-unit-'));
 const writeRules = (name, obj) => {
@@ -106,6 +107,45 @@ test('unreadable rules file → warn + CLI fallback', () => {
   assert.ok(warn, 'expected parse warn');
   const p = pickModelForCycle(rules, 'x', { model: 'claude-sonnet-5' });
   assert.equal(p.model, 'claude-sonnet-5');
+});
+
+const captureConsole = (fn) => {
+  let writes = 0;
+  const so = process.stdout.write.bind(process.stdout);
+  const se = process.stderr.write.bind(process.stderr);
+  process.stdout.write = () => { writes += 1; return true; };
+  process.stderr.write = () => { writes += 1; return true; };
+  try {
+    fn();
+  } finally {
+    process.stdout.write = so;
+    process.stderr.write = se;
+    setLogFile(null);
+  }
+  return writes;
+};
+
+test('detached (fileOnly) logging → file once, console silent (no duplicate lines)', () => {
+  const p = join(dir, 'detached.log');
+  const writes = captureConsole(() => {
+    setLogFile(p, { fileOnly: true });
+    log('info', 'hello-detached');
+    log('warn', 'warn-detached');
+  });
+  const content = readFileSync(p, 'utf8');
+  assert.equal(writes, 0, 'console must stay silent in fileOnly mode');
+  assert.equal((content.match(/hello-detached/g) || []).length, 1);
+  assert.equal((content.match(/warn-detached/g) || []).length, 1);
+});
+
+test('normal --log logging → console AND file', () => {
+  const p = join(dir, 'normal.log');
+  const writes = captureConsole(() => {
+    setLogFile(p);
+    log('info', 'hello-normal');
+  });
+  assert.equal(writes, 1);
+  assert.equal((readFileSync(p, 'utf8').match(/hello-normal/g) || []).length, 1);
 });
 
 let failed = 0;

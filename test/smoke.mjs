@@ -15,6 +15,11 @@ const dir = mkdtempSync(join(tmpdir(), 'autoloop-'));
 const stateFile = join(dir, 'STATE.md');
 const counterFile = join(dir, 'counter.txt');
 writeFileSync(stateFile, '# test state\n- [ ] unit 1\n');
+// pre-seed a stale sidecar from a "previous run" — a fresh start must clear it
+writeFileSync(
+  `${stateFile}.autoloop.json`,
+  JSON.stringify({ status: 'error', doneReason: 'claude-error', lastError: 'stale-from-previous-run', resumeAt: '2020-01-01T00:00:00Z' }),
+);
 
 const mock = `node "${join(root, 'test', 'mock-claude.mjs')}"`;
 
@@ -57,6 +62,9 @@ const checks = [
   ['marker really in state file', readFileSync(stateFile, 'utf8').includes('AUTOLOOP: COMPLETE')],
   // ไม่ได้ส่ง --model/--model-rules → ต้องเตือนเรื่อง default เครื่อง (กันเผาโควตาเงียบ ๆ)
   ['warned about machine-default model', /default ของเครื่อง/.test(out)],
+  // sidecar เป็น merge-patch — รันใหม่ต้องล้างซากของรันก่อน ไม่ใช่ปล่อยค้าง
+  ['stale lastError cleared on fresh start', sidecar.lastError === null],
+  ['doneReason belongs to THIS run', ['stop-marker', 'reply-marker'].includes(sidecar.doneReason)],
 ];
 
 let failed = 0;
