@@ -6,7 +6,7 @@
 // the custom `x-autoloop` header — a cross-origin page can't set it without
 // a CORS preflight, which this server never grants.
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,10 +14,14 @@ import { readRegistry, unregisterRun } from './registry.mjs';
 import { readRuntime } from './state.mjs';
 import { readPlanProgress } from './tui.mjs';
 import { listSessions } from './sessions.mjs';
+import { loadSecrets, defaultSecretsPath } from './secrets.mjs';
+import { validateBotToken, detectChatId, maskToken } from './notify-setup.mjs';
+import { sendWebhook } from './notify.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BIN = resolve(__dirname, '..', 'bin', 'autoloop.mjs');
 const HTML_PATH = join(__dirname, 'ui.html');
+const TAILWIND_PATH = join(__dirname, 'assets', 'tailwind.js');
 
 function pidAlive(pid) {
   if (!pid) return false;
@@ -64,6 +68,54 @@ export function collectRuns() {
   });
 }
 
+/** Folder browser for the cwd picker — read-only, directory names only. */
+export function browseDirs(path) {
+  if (!path) {
+    // top level: drives on Windows, / elsewhere
+    if (process.platform === 'win32') {
+      const drives = [];
+      for (let i = 65; i <= 90; i += 1) {
+        const d = `${String.fromCharCode(i)}:\\`;
+        try {
+          if (existsSync(d)) drives.push(d);
+        } catch {
+          /* skip unreadable drive */
+        }
+      }
+      return { path: null, parent: null, dirs: drives };
+    }
+    return browseDirs('/');
+  }
+  const abs = resolve(path);
+  if (!statSync(abs).isDirectory()) throw new Error('ไม่ใช่โฟลเดอร์');
+  const dirs = readdirSync(abs, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b));
+  const up = dirname(abs);
+  return { path: abs, parent: up === abs ? null : up, dirs };
+}
+
+/** Public (masked) view of the saved Telegram config — the token never leaves the server. */
+export function telegramStatus(secrets = loadSecrets()) {
+  const tg = secrets.telegram || {};
+  const configured = Boolean(tg.token && tg.chatId);
+  return {
+    configured,
+    chatId: configured ? tg.chatId : null,
+    maskedToken: tg.token ? maskToken(tg.token) : null,
+    botUsername: tg.botUsername || null,
+  };
+}
+
+/** Merge a new telegram config into existing secrets without dropping other keys. */
+export function mergeTelegramSecrets(existing, { token, chatId, botUsername }) {
+  return { ...existing, telegram: { token, chatId, ...(botUsername ? { botUsername } : {}) } };
+}
+
+const tgSendUrl = (token, chatId) =>
+  `https://api.telegram.org/bot${token}/sendMessage?chat_id=${encodeURIComponent(chatId)}`;
+
 /** Editable-from-UI files are ONLY the model-rules paths of registered runs. */
 function isKnownRulesFile(path) {
   if (!path) return false;
@@ -74,6 +126,18 @@ function isKnownRulesFile(path) {
 function json(res, code, body) {
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
+}
+
+function serveFile(res, filePath, type, extraHeaders = {}) {
+  let body;
+  try {
+    body = readFileSync(filePath);
+  } catch (err) {
+    json(res, 500, { error: `cannot read ${filePath}: ${err.message}` });
+    return;
+  }
+  res.writeHead(200, { 'content-type': type, ...extraHeaders });
+  res.end(body);
 }
 
 function readBody(req) {
@@ -98,7 +162,13 @@ function readBody(req) {
 export function startArgsFromPayload(p) {
   if (!p || !p.cwd || !p.stateFile) throw new Error('ต้องระบุ cwd และ stateFile');
   if (!existsSync(p.cwd)) throw new Error(`ไม่พบโฟลเดอร์: ${p.cwd}`);
-  if (!existsSync(p.stateFile)) throw new Error(`ไม่พบ state file: ${p.stateFile} — สร้างไฟล์แผน/checklist ก่อน`);
+  if (!existsSync(p.stateFile)) {
+    throw new Error(`ไม่พบ state file: ${p.stateFile} — ต้องสั่งให้ Claude สร้าง workflow ก่อน (กดปุ่ม 💡 ด้านบน มี prompt สำเร็จรูปให้ copy)`);
+  }
+  // ไม่มี checklist = ยังไม่ได้เตรียม workflow → loop จะวิ่งแบบตาบอด ไม่มี progress/เงื่อนไขจบที่ไว้ใจได้
+  if (!/^\s*[-*] \[[ xX~]\]/m.test(readFileSync(p.stateFile, 'utf8'))) {
+    throw new Error('state file ยังไม่มี checklist "- [ ]" — สั่งให้ Claude สร้าง workflow ก่อน (กดปุ่ม 💡 ด้านบน มี prompt สำเร็จรูปให้ copy) แล้วค่อยกลับมา start');
+  }
   const args = ['start', '--cwd', p.cwd, '--state-file', p.stateFile];
   if (p.session) args.push('--session', p.session);
   if (p.promptFile) args.push('--prompt-file', p.promptFile);
@@ -108,6 +178,9 @@ export function startArgsFromPayload(p) {
   if (p.effort) args.push('--effort', p.effort);
   if (p.maxCycles) args.push('--max-cycles', String(Number(p.maxCycles) || 30));
   args.push('--permission-mode', p.permissionMode || 'acceptEdits');
+  // notify default = on when secrets exist (engine behavior) — only explicit opt-out disables
+  if (p.notify === false || p.notify === 'false' || p.notify === 'off') args.push('--no-notify');
+  if (p.remoteControl === true || p.remoteControl === 'true' || p.remoteControl === 'on') args.push('--remote-control');
   return args;
 }
 
@@ -126,9 +199,23 @@ async function handle(req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   const path = url.pathname;
 
+  // read BEFORE writeHead — a throw after headers are sent would crash the
+  // process when the error handler tries to write a second status line
   if (req.method === 'GET' && path === '/') {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(readFileSync(HTML_PATH, 'utf8'));
+    serveFile(res, HTML_PATH, 'text/html; charset=utf-8');
+    return;
+  }
+  if (req.method === 'GET' && path === '/assets/tailwind.js') {
+    serveFile(res, TAILWIND_PATH, 'text/javascript; charset=utf-8', { 'cache-control': 'max-age=86400' });
+    return;
+  }
+  // identify this server as autoloop (the launcher probes this before reusing a busy port)
+  if (req.method === 'GET' && path === '/api/health') {
+    json(res, 200, { app: 'autoloop', ok: true });
+    return;
+  }
+  if (req.method === 'GET' && path === '/api/telegram') {
+    json(res, 200, telegramStatus());
     return;
   }
   if (req.method === 'GET' && path === '/api/runs') {
@@ -139,6 +226,14 @@ async function handle(req, res) {
     const stateFile = url.searchParams.get('state') || '';
     const lines = Math.min(500, Number(url.searchParams.get('lines')) || 60);
     json(res, 200, { lines: logTail(stateFile, lines) });
+    return;
+  }
+  if (req.method === 'GET' && path === '/api/browse') {
+    try {
+      json(res, 200, browseDirs(url.searchParams.get('path') || ''));
+    } catch (err) {
+      json(res, 404, { error: err.message });
+    }
     return;
   }
   if (req.method === 'GET' && path === '/api/model-rules') {
@@ -211,6 +306,67 @@ async function handle(req, res) {
       json(res, 200, { ok: true });
       return;
     }
+    // ── Telegram setup (GUI twin of `autoloop notify-setup`) ──
+    if (path === '/api/telegram/validate') {
+      const token = String(body.token || '').trim();
+      if (!token) {
+        json(res, 400, { error: 'missing token' });
+        return;
+      }
+      const v = await validateBotToken(token);
+      json(res, v.ok ? 200 : 400, v);
+      return;
+    }
+    if (path === '/api/telegram/detect') {
+      const token = String(body.token || '').trim() || loadSecrets().telegram?.token;
+      if (!token) {
+        json(res, 400, { error: 'missing token' });
+        return;
+      }
+      const found = await detectChatId(token);
+      if (found) json(res, 200, found);
+      else json(res, 404, { error: 'no message found yet' });
+      return;
+    }
+    if (path === '/api/telegram/save') {
+      const existing = loadSecrets();
+      const token = String(body.token || '').trim() || existing.telegram?.token;
+      const chatId = String(body.chatId || '').trim();
+      if (!token || !chatId) {
+        json(res, 400, { error: 'missing token/chatId' });
+        return;
+      }
+      const v = await validateBotToken(token);
+      if (!v.ok) {
+        json(res, 400, { error: `invalid token: ${v.error || 'unknown'}` });
+        return;
+      }
+      try {
+        writeFileSync(defaultSecretsPath, JSON.stringify(mergeTelegramSecrets(existing, { token, chatId, botUsername: v.username }), null, 2));
+      } catch (err) {
+        json(res, 500, { error: err.message });
+        return;
+      }
+      const test = await sendWebhook(tgSendUrl(token, chatId), {
+        status: 'test',
+        message: 'ตั้งค่าเสร็จแล้ว — autoloop จะรายงานเข้าห้องนี้ ✅ / Setup complete — autoloop will report here.',
+      });
+      json(res, 200, { ok: true, botUsername: v.username, test });
+      return;
+    }
+    if (path === '/api/telegram/test') {
+      const tg = loadSecrets().telegram || {};
+      if (!tg.token || !tg.chatId) {
+        json(res, 400, { error: 'not configured' });
+        return;
+      }
+      const r = await sendWebhook(tgSendUrl(tg.token, tg.chatId), {
+        status: 'test',
+        message: 'ทดสอบจากหน้า dashboard ✅ / Test from the dashboard.',
+      });
+      json(res, r.ok ? 200 : 502, r);
+      return;
+    }
     if (path === '/api/model-rules') {
       // engine hot-reloads the file every cycle → saving here takes effect next round
       if (!isKnownRulesFile(body.path)) {
@@ -241,7 +397,13 @@ async function handle(req, res) {
 /** @returns {Promise<{server: import('node:http').Server, port: number}>} */
 export function startUiServer({ port = 4900, host = '127.0.0.1' } = {}) {
   const server = createServer((req, res) => {
-    handle(req, res).catch((err) => json(res, 500, { error: String(err && err.message) }));
+    handle(req, res).catch((err) => {
+      if (res.headersSent) {
+        res.destroy(); // can't send a second status line — just drop the socket
+        return;
+      }
+      json(res, 500, { error: String(err && err.message) });
+    });
   });
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject);

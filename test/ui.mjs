@@ -8,9 +8,11 @@ import { join, resolve } from 'node:path';
 
 const dir = mkdtempSync(join(tmpdir(), 'autoloop-ui-'));
 process.env.AUTOLOOP_HOME = join(dir, 'home');
+process.env.AUTOLOOP_SECRETS = join(dir, 'secrets.json'); // never touch the real secrets file
 
 const { registerRun, unregisterRun, readRegistry, registryPath } = await import('../src/registry.mjs');
-const { startArgsFromPayload, collectRuns, startUiServer } = await import('../src/ui-server.mjs');
+const { startArgsFromPayload, collectRuns, startUiServer, telegramStatus, mergeTelegramSecrets } = await import('../src/ui-server.mjs');
+const { nodeVersionOk, buildInstallPlan } = await import('../src/doctor.mjs');
 
 const cases = [];
 const test = (name, fn) => cases.push([name, fn]);
@@ -57,6 +59,54 @@ test('startArgsFromPayload: full payload → correct argv (unknown keys ignored)
   ]);
 });
 
+test('startArgsFromPayload: notify=false → --no-notify · remoteControl=true → --remote-control', () => {
+  const stateFile = join(dir, 'STATE.md');
+  writeFileSync(stateFile, '- [ ] unit 1\n');
+  const base = { cwd: dir, stateFile };
+  assert.ok(startArgsFromPayload({ ...base, notify: false }).includes('--no-notify'));
+  assert.ok(startArgsFromPayload({ ...base, notify: 'false' }).includes('--no-notify'));
+  assert.ok(!startArgsFromPayload({ ...base, notify: true }).includes('--no-notify'));
+  assert.ok(!startArgsFromPayload(base).includes('--no-notify')); // absent = engine default (on if secrets)
+  assert.ok(startArgsFromPayload({ ...base, remoteControl: true }).includes('--remote-control'));
+  assert.ok(!startArgsFromPayload(base).includes('--remote-control'));
+});
+
+// ── telegram helpers (pure — no network) ──
+test('telegramStatus: masks the token, never returns it raw', () => {
+  const s = telegramStatus({ telegram: { token: '123456789:AAlongsecrettokenvalue', chatId: '42', botUsername: 'kp_bot' } });
+  assert.equal(s.configured, true);
+  assert.equal(s.chatId, '42');
+  assert.equal(s.botUsername, 'kp_bot');
+  assert.ok(!s.maskedToken.includes('longsecret'), 'token must be masked');
+  assert.deepEqual(telegramStatus({}), { configured: false, chatId: null, maskedToken: null, botUsername: null });
+});
+
+test('mergeTelegramSecrets: keeps other keys, replaces telegram', () => {
+  const next = mergeTelegramSecrets({ webhookUrl: 'https://x', telegram: { token: 'old', chatId: '1' } }, { token: 'new', chatId: '2', botUsername: 'b' });
+  assert.equal(next.webhookUrl, 'https://x');
+  assert.deepEqual(next.telegram, { token: 'new', chatId: '2', botUsername: 'b' });
+});
+
+// ── doctor helpers (pure) ──
+test('doctor: nodeVersionOk + buildInstallPlan dedupes the node/npm installer', () => {
+  assert.ok(nodeVersionOk('v20.11.0'));
+  assert.ok(!nodeVersionOk('v16.4.0'));
+  assert.ok(!nodeVersionOk(''));
+  const checks = [
+    { name: 'node', ok: false },
+    { name: 'npm', ok: false },
+    { name: 'claude', ok: false },
+    { name: 'git', ok: true },
+  ];
+  const plan = buildInstallPlan(checks, 'win32');
+  assert.equal(plan.length, 2); // node+npm share one winget install; claude via npm
+  assert.ok(plan.some((p) => p.cmd.includes('OpenJS.NodeJS')));
+  assert.ok(plan.some((p) => p.cmd.includes('@anthropic-ai/claude-code')));
+  const mac = buildInstallPlan(checks, 'darwin');
+  assert.ok(mac.every((p) => !p.cmd || !p.cmd.includes('winget')), 'no winget commands off-Windows');
+  assert.ok(mac.some((p) => p.hint), 'manual hint offered instead');
+});
+
 // ── collectRuns enrichment ──
 test('collectRuns: registered run gets sidecar + plan progress', () => {
   const stateFile = join(dir, 'RUN.md');
@@ -96,6 +146,27 @@ test('http: GET / = html · GET /api/runs = json · POST w/o header = 403 · bad
       body: JSON.stringify({ cwd: dir, stateFile: join(dir, 'missing.md') }),
     });
     assert.equal(badStart.status, 400);
+
+    const health = await fetch(base + '/api/health');
+    assert.equal(health.status, 200);
+    assert.equal((await health.json()).app, 'autoloop');
+
+    const tg = await fetch(base + '/api/telegram');
+    assert.equal(tg.status, 200);
+    assert.equal((await tg.json()).configured, false); // sandboxed secrets file — not set up
+
+    // validation-only paths (no Telegram network call)
+    const noToken = await fetch(base + '/api/telegram/validate', {
+      method: 'POST', headers: { 'x-autoloop': '1', 'content-type': 'application/json' }, body: '{}',
+    });
+    assert.equal(noToken.status, 400);
+    const saveNoChat = await fetch(base + '/api/telegram/save', {
+      method: 'POST', headers: { 'x-autoloop': '1', 'content-type': 'application/json' }, body: JSON.stringify({ token: 'x' }),
+    });
+    assert.equal(saveNoChat.status, 400);
+
+    const tw = await fetch(base + '/assets/tailwind.js');
+    assert.equal(tw.status, 200); // vendored asset must be served (UI depends on it)
   } finally {
     await new Promise((r) => server.close(r)); // fully closed before exit — Windows libuv asserts otherwise
   }

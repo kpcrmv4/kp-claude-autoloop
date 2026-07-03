@@ -25,7 +25,10 @@ USAGE
   autoloop status --state-file <file>                          show runtime state + log tail
   autoloop stop   --state-file <file>                          stop a detached run
   autoloop list                                                list recent Claude sessions
-  autoloop ui [--port 4900]                                    localhost dashboard (ดู/สั่ง run ทุกตัวจากเบราว์เซอร์)
+  autoloop ui [--port 4900] [--open]                           localhost dashboard (ดู/สั่ง run ทุกตัวจากเบราว์เซอร์)
+                                                               --open = เปิดเบราว์เซอร์ให้เลย; ถ้ามี server เดิมรันค้างอยู่จะไม่เปิดซ้ำ
+  autoloop doctor [--yes]                                      ตรวจเครื่องมือที่ต้องมี (node/npm/claude/git) — ขาดอะไรถาม Y แล้วติดตั้งให้
+                                                               เสร็จแล้วสร้างชอร์ตคัต Desktop เปิด dashboard ได้ด้วยดับเบิลคลิก
   autoloop notify-setup                                        interactive Telegram setup wizard (auto chat-id)
   autoloop notify-test                                         send a test notification (Telegram/webhook)
 
@@ -56,6 +59,8 @@ OPTIONS
   --model-rules <file>   เลือก model/effort อัตโนมัติต่อรอบ ตาม "ขั้นตอนถัดไป" ใน state
                          (JSON: {default:{model,effort}, rules:[{match,model,effort}]}
                           match = regex เทียบกับ checkbox ตัวถัดไป · hot-reload ทุกรอบ)
+  --remote-control       เปิด Remote Control ของ Claude Code ทุกรอบ — แอบดู/สั่ง session
+                         ต่อจากมือถือผ่าน claude.ai ได้ระหว่าง loop ทำงาน
   --claude-arg <flag>    ส่ง flag อื่นทะลุไปหา claude ตรง ๆ (ใส่ซ้ำได้ทีละชิ้น)
                          เช่น --claude-arg --fallback-model --claude-arg claude-sonnet-5
   --log <file>           append logs to a file
@@ -100,6 +105,8 @@ function parseArgs(argv) {
     claudeCmd: 'claude',
     detached: false, // internal: set by `start` — log to file only (stdout is already the log file)
     port: null,
+    open: false,
+    yes: false,
     help: false,
   };
 
@@ -132,6 +139,7 @@ function parseArgs(argv) {
       case '--model': cfg.model = take(); break;
       case '--effort': cfg.effort = take(); break;
       case '--model-rules': cfg.modelRulesFile = resolve(take()); break;
+      case '--remote-control': cfg.extraArgs.push('--remote-control'); break;
       case '--claude-arg': cfg.extraArgs.push(take()); break;
       case '--log': cfg.logFile = resolve(take()); break;
       case '--secrets': cfg.secretsFile = resolve(take()); break;
@@ -139,6 +147,8 @@ function parseArgs(argv) {
       case '--claude-cmd': cfg.claudeCmd = take(); break;
       case '--detached': cfg.detached = true; break;
       case '--port': cfg.port = Number(take()); break;
+      case '--open': cfg.open = true; break;
+      case '--yes': case '-y': cfg.yes = true; break;
       case '--help': case '-h': cfg.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
@@ -192,6 +202,19 @@ function buildNotifyTargets(cfg) {
   return resolveTargets(loadSecrets(cfg.secretsFile));
 }
 
+/** Fire-and-forget default browser open (win/mac/linux). */
+function openInBrowser(url) {
+  const [cmd, args] =
+    process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
+    : process.platform === 'darwin' ? ['open', [url]]
+    : ['xdg-open', [url]];
+  try {
+    spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
+  } catch {
+    /* browser open is best-effort */
+  }
+}
+
 /** headless ไม่ใช้ model ที่ตั้งใน IDE — ไม่ล็อกไว้ = วิ่ง default ของเครื่อง (อาจแพงสุด) */
 function modelFootgunWarning(cfg) {
   if (cfg.model || cfg.modelRulesFile) return null;
@@ -224,12 +247,41 @@ async function main() {
 
     case 'ui': {
       const { startUiServer } = await import('../src/ui-server.mjs');
-      const { port } = await startUiServer({ port: cfg.port || 4900 });
+      const wantPort = cfg.port || 4900;
+      const url = `http://127.0.0.1:${wantPort}`;
+      let server;
+      try {
+        server = await startUiServer({ port: wantPort });
+      } catch (err) {
+        if (err && err.code === 'EADDRINUSE') {
+          // port busy — if it's a previous autoloop dashboard, reuse it instead of failing
+          const isOurs = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(2000) })
+            .then((r) => r.json())
+            .then((b) => b && b.app === 'autoloop')
+            .catch(() => false);
+          if (isOurs) {
+            process.stdout.write(`[autoloop] dashboard already running: ${url} — reusing it\n`);
+            if (cfg.open) openInBrowser(url);
+            return 0;
+          }
+          process.stderr.write(
+            `[autoloop] port ${wantPort} is busy — either another program, or an old autoloop dashboard from before this version. Close that window or try a different --port\n`,
+          );
+          return 1;
+        }
+        throw err;
+      }
       process.stdout.write(
-        `[autoloop] dashboard: http://127.0.0.1:${port}\n` +
-          `  (bind 127.0.0.1 เท่านั้น — Ctrl+C เพื่อปิด; run ที่สั่งจากหน้านี้ไม่ตายตามตัว dashboard)\n`,
+        `[autoloop] dashboard: http://127.0.0.1:${server.port}\n` +
+          `  (binds 127.0.0.1 only — Ctrl+C to stop; runs started from the page keep going without this window)\n`,
       );
+      if (cfg.open) openInBrowser(`http://127.0.0.1:${server.port}`);
       return await new Promise(() => {}); // serve until Ctrl+C
+    }
+
+    case 'doctor': {
+      const { runDoctor } = await import('../src/doctor.mjs');
+      return await runDoctor({ yes: cfg.yes });
     }
 
     case 'notify-setup': {

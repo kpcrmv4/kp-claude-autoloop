@@ -4,8 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Default location: <repo-root>/autoloop.secrets.json (gitignored). */
-export const defaultSecretsPath = resolve(repoRoot, 'autoloop.secrets.json');
+/** Default location: <repo-root>/autoloop.secrets.json (gitignored).
+ *  AUTOLOOP_SECRETS env overrides it (tests sandbox through this). */
+export const defaultSecretsPath = process.env.AUTOLOOP_SECRETS
+  ? resolve(process.env.AUTOLOOP_SECRETS)
+  : resolve(repoRoot, 'autoloop.secrets.json');
 
 /**
  * Load notify secrets. Never throws; missing/broken file → {}.
