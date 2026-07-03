@@ -1,8 +1,10 @@
 # claude-autoloop
 
-ให้ **Claude Code ทำงานยาวข้ามลิมิต 5 ชั่วโมงเองได้** — watchdog ตัวเล็ก ๆ ที่ปลุก session เดิมกลับมาทำงานต่อ "ทีละรอบ" จนกว่างานจะจบจริง (พิสูจน์ด้วย **stop marker** ในไฟล์ state กลาง) ไม่มี GUI, ไม่มี dependency, มีแค่ Node + `claude` CLI ที่ login ไว้แล้ว
+ให้ **Claude Code ทำงานยาวข้ามลิมิต 5 ชั่วโมงเองได้** — watchdog ตัวเล็ก ๆ ที่ปลุก session เดิมกลับมาทำงานต่อ "ทีละรอบ" จนกว่างานจะจบจริง (พิสูจน์ด้วย **stop marker** ในไฟล์ state กลาง) ไม่มี dependency — มีแค่ Node + `claude` CLI ที่ login ไว้แล้ว พร้อม **dashboard บนเบราว์เซอร์** ไว้สั่ง/ตามดูทุก run
 
 > ต่อยอดจากแนวคิด [autoresume]: อ่าน "เวลา reset" จาก output จริงของ Claude Code (ไม่ใช่เดา) → นอนรอ → ยิงต่ออัตโนมัติ · เพิ่มสิ่งที่ autoresume ไม่มี: **สัญญา state กลาง + เงื่อนไขหยุดจากไฟล์ + heartbeat อัตโนมัติ + สั่งแบบ start/stop/status ไม่ต้องเฝ้า terminal**
+
+![KP Claude Autoloop dashboard — เห็นทุก run: progress ตามแผนจริง, สิ่งที่ Claude กำลังทำตอนนี้, ปุ่มหยุดแบบจบสวย](docs/img/dashboard-dark.png)
 
 ## มันแก้ปัญหาอะไร
 
@@ -141,6 +143,10 @@ node bin/autoloop.mjs ui --open   # + เปิดเบราว์เซอร
 - ปุ่ม **⚙ ตั้งค่า Telegram** ในหน้าเว็บ: ตรวจ token กับ Telegram จริง → หา chat id อัตโนมัติ → บันทึก + ยิงทดสอบ (token โชว์เฉพาะแบบ mask ไม่เคยส่งกลับเต็ม ๆ)
 - ฟอร์มเริ่ม run: เลือกโฟลเดอร์แล้ว **scan หาไฟล์แผนงานเติมให้อัตโนมัติ** + **ติ๊กแจ้งเตือน Telegram ให้เอง** เมื่อตั้งค่า bot ไว้แล้ว
 - ทุกข้อความ Telegram แนบ **ความคืบหน้า x/y ข้อ (%) + ข้อถัดไป** — เห็น progress จากมือถือได้โดยไม่ต้องเปิดเครื่อง
+
+| โหมดสว่าง + ภาษาไทย (สลับได้จากหัวเว็บ) | ตั้งค่าแจ้งเตือน Telegram จากหน้าเว็บ |
+|---|---|
+| ![dashboard light theme Thai](docs/img/dashboard-light-th.png) | ![Telegram setup modal](docs/img/telegram-setup.png) |
 
 ## หน้าจอสดในเทอร์มินัล (โหมด `run`)
 

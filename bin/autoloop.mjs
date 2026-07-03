@@ -17,7 +17,7 @@ import { resolveTargets, notifyAll } from '../src/notify.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const HELP = `
-autoloop — Claude Code loop runner that survives usage limits (no GUI)
+autoloop — Claude Code loop runner that survives usage limits
 
 USAGE
   autoloop run    --cwd <dir> --state-file <file> [options]   run in this terminal
