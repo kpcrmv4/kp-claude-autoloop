@@ -216,7 +216,7 @@ export async function runEngine(cfg) {
           });
           paint(renderWaitPanel(panelState())); // final 0s frame
           process.stdout.write('\n');
-          log('info', '⏰ ถึงเวลาแล้ว — กลับมาทำงานต่อ');
+          log('info', stopRequested ? '⏹ ยกเลิกการรอ — หยุดตามคำสั่งผู้ใช้' : '⏰ ถึงเวลาแล้ว — กลับมาทำงานต่อ');
         } else {
           await sleepUntil(target, {
             shouldStop: () => stopRequested,
