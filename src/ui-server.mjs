@@ -209,6 +209,10 @@ async function handle(req, res) {
     serveFile(res, TAILWIND_PATH, 'text/javascript; charset=utf-8', { 'cache-control': 'max-age=86400' });
     return;
   }
+  if (req.method === 'GET' && path === '/assets/logo.png') {
+    serveFile(res, join(__dirname, 'assets', 'kpwebappstudio.png'), 'image/png', { 'cache-control': 'max-age=86400' });
+    return;
+  }
   // identify this server as autoloop (the launcher probes this before reusing a busy port)
   if (req.method === 'GET' && path === '/api/health') {
     json(res, 200, { app: 'autoloop', ok: true });
