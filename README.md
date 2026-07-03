@@ -91,11 +91,23 @@ node bin/autoloop.mjs stop   --state-file "F:\my-proj\docs\STATE.md"
 | `--max-cycles` / `--max-waits` | 30 / 20 | เพดานรอบสำเร็จ / เพดานครั้งที่โดนลิมิต |
 | `--buffer` / `--min-retry` | 90 / 60 วินาที | กันตื่นเร็วไป / กันถี่ไป |
 | `--permission-mode` | — | ส่งต่อให้ claude (แนะนำ `acceptEdits`) |
-| `--model` / `--effort` | default ของเครื่อง | เลือก model (`claude-sonnet-5`/`opus`/…) และ effort (`low/medium/high`) ต่อการรัน — headless ไม่จำค่าที่ตั้งใน IDE ควรระบุเสมอ |
-| `--model-rules <file>` | — | **สลับ model/effort อัตโนมัติต่อรอบ** ตามความยากของงาน — regex เทียบกับ "ขั้นตอนถัดไป" ใน state (เช่น payroll→opus/max, งานทั่วไป→sonnet/high) hot-reload ทุกรอบ · ดู `examples/model-rules.example.json` |
+| `--model` / `--effort` | default ของเครื่อง | เลือก model (`claude-sonnet-5`/`opus`/…) และ effort (`low/medium/high`) ต่อการรัน — headless ไม่จำค่าที่ตั้งใน IDE **ควรระบุเสมอ** (ไม่ระบุ = มี warning ตอน start และต้นรอบ) |
+| `--model-rules <file>` | — | **สลับ model/effort อัตโนมัติต่อรอบ** ตามความยากของงาน — regex เทียบกับ "ขั้นตอนถัดไป" ใน state (เช่น payroll→opus/max, งานทั่วไป→sonnet/high) hot-reload ทุกรอบ · ต้องมี `default` ไม่งั้นเตือน · ดู `examples/model-rules.example.json` |
+| `--cooldown` | 0 | พักระหว่างรอบสำเร็จ — **อย่าตั้งเกิน ~240s**: prompt cache TTL ~5 นาที หมดอายุระหว่างรอบ = ทุกรอบจ่าย input เต็มราคา (≥300s มี warning) |
 | `--claude-arg <x>` | — | ส่ง flag อื่นทะลุถึง claude (ใส่ซ้ำได้) เช่น `--fallback-model` |
 | `--timeout` | 0 | ฆ่ารอบที่ค้างเกิน N วินาที |
 | `--claude-cmd` | `claude` | override binary (ไว้เทสต์ด้วย mock) |
+
+## ประหยัดโควตา (อ่านก่อนปล่อยรันยาว)
+
+autoloop จ่าย "ค่า overhead คงที่" ทุกรอบ (โหลด system prompt + CLAUDE.md + MCP schemas + อ่านแผน/git) — ถ้ารอบเล็กหรือ model แพง งานต่อโควตาจะแย่กว่าสั่งมือในเซสชันเดิมมาก กติกา:
+
+- **ล็อก model เสมอ** — headless ไม่ใช้ค่าที่ตั้งใน IDE ถ้าไม่ระบุจะวิ่ง default ของเครื่อง (อาจเป็น opus/fable = แพงกว่า sonnet หลายเท่าต่องานเท่ากัน) ใช้ `--model claude-sonnet-5 --effort high` หรือ `--model-rules` ที่ `default` เป็น sonnet แล้ว reserve opus เฉพาะข้อยาก
+- **ทำงานเป็น batch** — prompt ประจำรอบควรสั่ง 3-5 work unit ต่อรอบ (ดู `examples/round-prompt.example.txt`) เพื่อเฉลี่ย overhead ให้คุ้ม รอบละ 1 unit = จ่าย overhead เต็มแลกงานชิ้นเดียว
+- **เริ่มจาก session สะอาด** — อย่า resume แชท interactive ที่คุยมายาว: ประวัติทั้งก้อนถูกลากไปทุกรอบ และหลังตื่นจากรอลิมิต cache เย็นสนิท ต้องจ่ายทั้งก้อนเต็มราคาก่อนได้งานสักบรรทัด · สร้างเซสชันใหม่ที่มีแค่แผนแล้ว pin ด้วย `--session`
+- **verify แบบเบา** — typecheck ทุก unit พอ, test เต็มชุดทุก ~3 unit หรือตอนจบ feature (log test ยาว ๆ กลายเป็น input ของทุกรอบถัดไป)
+- **cooldown < 4 นาที** — เกินนั้น prompt cache (TTL ~5 นาที) หมดอายุระหว่างรอบ
+- **ตัด MCP ที่ไม่ใช้** — โปรเจกต์เป้าหมายควรเปิดเฉพาะ MCP ที่จำเป็นใน `.claude/settings.json` — schema ของทุก server ถูกโหลดใหม่ทุกจุดที่ cache เย็น
 
 ## หน้าจอสดในเทอร์มินัล (โหมด `run`)
 

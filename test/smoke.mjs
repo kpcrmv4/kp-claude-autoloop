@@ -55,6 +55,8 @@ const checks = [
   ['sidecar counted cycles', sidecar.cycles >= 1],
   ['sidecar recorded the limit', typeof sidecar.limitedAt === 'string'],
   ['marker really in state file', readFileSync(stateFile, 'utf8').includes('AUTOLOOP: COMPLETE')],
+  // ไม่ได้ส่ง --model/--model-rules → ต้องเตือนเรื่อง default เครื่อง (กันเผาโควตาเงียบ ๆ)
+  ['warned about machine-default model', /default ของเครื่อง/.test(out)],
 ];
 
 let failed = 0;

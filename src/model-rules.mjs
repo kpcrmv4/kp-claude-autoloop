@@ -21,7 +21,14 @@ export function loadModelRules(path) {
     if (!existsSync(path)) return { rules: null, warn: `ไม่พบไฟล์ model-rules: ${path}` };
     const raw = JSON.parse(readFileSync(path, 'utf8'));
     const rules = Array.isArray(raw.rules) ? raw.rules.filter((r) => r && r.match) : [];
-    return { rules: { default: raw.default || null, rules } };
+    // default ต้องมี model หรือ effort จริง ๆ — {} เปล่า ๆ ไม่นับ (ตาข่ายขาด = ตกไป default เครื่องซึ่งอาจแพง)
+    const def = raw.default && (raw.default.model || raw.default.effort) ? raw.default : null;
+    return {
+      rules: { default: def, rules },
+      warn: def
+        ? undefined
+        : `ไฟล์ model-rules ไม่มี "default" — งานที่ไม่ match rule จะตกไปใช้ --model/ค่า default ของเครื่อง (อาจแพง) แนะนำใส่ "default": {"model":"claude-sonnet-5"}`,
+    };
   } catch (err) {
     return { rules: null, warn: `อ่าน model-rules ไม่ได้ (${err.message}) — ใช้ค่า --model/--effort ปกติ` };
   }

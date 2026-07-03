@@ -1,3 +1,5 @@
 กู้ซากก่อน: git status ถ้ามีงานค้างจากรอบที่ตายกลางคัน ให้เก็บให้จบ (verify + commit) ก่อนขึ้นงานใหม่
-จากนั้นทำต่อตามแผนใน docs/BUILD-PLAN.md จากสถานะใน docs/BUILD-STATE.md — ทำทีละ 1-2 work unit, verify ตามที่แผนกำหนด (typecheck/tests/e2e), commit local (ห้าม push จนกว่าจะสั่ง), อัปเดต docs/BUILD-STATE.md แล้วจบเทิร์นทันที
+จากนั้นทำต่อตามแผนใน docs/BUILD-PLAN.md จากสถานะใน docs/BUILD-STATE.md — ทำต่อเนื่องรอบละ 3-5 work unit (หรือจน context ใกล้เต็ม) อย่าจบเทิร์นหลังทำแค่ unit เดียว: overhead ต่อรอบ (โหลด context/อ่านแผน/git) มีราคาคงที่ ต้องเฉลี่ยให้คุ้ม
+verify แบบประหยัด: typecheck หลังจบทุก unit · test เต็มชุดเฉพาะตอนจบ feature หรือทุก ~3 unit · commit local เป็นระยะ (ห้าม push จนกว่าจะสั่ง)
+ก่อนจบเทิร์น: ติ๊ก checkbox ที่เสร็จแล้วใน docs/BUILD-STATE.md ให้ครบ แล้วจบเทิร์นทันที
 ถ้าทุกข้อใน BUILD-STATE.md ติ๊กครบแล้ว: เติมบรรทัด "AUTOLOOP: COMPLETE" ท้ายไฟล์ BUILD-STATE.md และตอบแค่ AUTOLOOP: COMPLETE

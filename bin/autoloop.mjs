@@ -45,7 +45,8 @@ OPTIONS
   --fallback-wait-min <m> sleep this long when reset time can't be parsed (default 300 = 5h)
   --buffer <sec>         extra wait after the parsed reset time (default 90)
   --min-retry <sec>      never retry sooner than this after a limit (default 60)
-  --cooldown <sec>       pause between successful rounds (default 0)
+  --cooldown <sec>       pause between successful rounds (default 0 — เกิน ~240
+                         จะเตือน: prompt cache TTL ~5 นาที หมดอายุ = จ่ายเต็มทุกรอบ)
   --timeout <sec>        kill a single round after this long (default 0 = no timeout)
   --permission-mode <m>  claude --permission-mode (e.g. acceptEdits)
   --model <name>         claude --model (e.g. claude-sonnet-5 / claude-opus-4-8 / sonnet / opus)
@@ -183,6 +184,16 @@ function buildNotifyTargets(cfg) {
   return resolveTargets(loadSecrets(cfg.secretsFile));
 }
 
+/** headless ไม่ใช้ model ที่ตั้งใน IDE — ไม่ล็อกไว้ = วิ่ง default ของเครื่อง (อาจแพงสุด) */
+function modelFootgunWarning(cfg) {
+  if (cfg.model || cfg.modelRulesFile) return null;
+  return (
+    '⚠ ไม่ได้ระบุ --model / --model-rules → ทุกรอบจะใช้ model default ของเครื่อง ' +
+    '(headless ไม่จำค่าที่ตั้งใน IDE — อาจได้ตัวแพง opus/fable = เผาโควตาเร็ว) ' +
+    'แนะนำ --model claude-sonnet-5 [--effort high] หรือ --model-rules (ดู examples/model-rules.example.json)'
+  );
+}
+
 async function main() {
   let cfg;
   try {
@@ -246,6 +257,8 @@ async function main() {
       if (!cfg.sessionId) {
         log('warn', 'ไม่ได้ระบุ --session → จะ --continue แชทล่าสุดใน cwd ซึ่งอาจไม่ใช่ตัวที่ตั้งใจ (แนะนำ: autoloop list แล้วระบุ --session)');
       }
+      const modelWarn = modelFootgunWarning(cfg);
+      if (modelWarn) log('warn', modelWarn);
       return await runEngine({ ...cfg, notifyTargets });
     }
 
@@ -268,6 +281,8 @@ async function main() {
           /* stale pid → fine to start */
         }
       }
+      const startModelWarn = modelFootgunWarning(cfg);
+      if (startModelWarn) process.stderr.write(`[autoloop] ${startModelWarn}\n`);
       const logFile = cfg.logFile || `${cfg.stateFile}.autoloop.log`;
       const out = openSync(logFile, 'a');
       const child = spawn(

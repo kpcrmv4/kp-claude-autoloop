@@ -89,6 +89,14 @@ export async function runEngine(cfg) {
   let cycles = 0;
   let waits = 0;
   let wasLimited = false;
+  let warnedNoModel = false;
+  let warnedNoNextItem = false;
+  let lastRulesWarn = null;
+
+  // cooldown ≥ 5 นาที = prompt cache (TTL ~5 นาที) หมดอายุระหว่างรอบ → ทุกรอบจ่าย input เต็มราคา
+  if (cfg.cooldownSec >= 300) {
+    log('warn', `--cooldown ${cfg.cooldownSec}s ≥ 300s — prompt cache (TTL ~5 นาที) จะหมดอายุระหว่างรอบ ทำให้ทุกรอบจ่าย input เต็มราคา · แนะนำ < 240s`);
+  }
 
   try {
     while (!stopRequested) {
@@ -106,8 +114,22 @@ export async function runEngine(cfg) {
       // ── per-cycle model/effort: match the NEXT work item against rules
       //    (hot-reloaded each cycle so the user can tune mid-run) ──
       const { rules, warn: rulesWarn } = loadModelRules(cfg.modelRulesFile);
-      if (rulesWarn) log('warn', rulesWarn);
+      if (rulesWarn && rulesWarn !== lastRulesWarn) {
+        log('warn', rulesWarn);
+        lastRulesWarn = rulesWarn;
+      }
       const picked = pickModelForCycle(rules, planNow?.nextItem, { model: cfg.model, effort: cfg.effort });
+
+      // ตาข่ายกันเผาโควตา: resolve แล้วไม่มี model = claude ใช้ default ของเครื่อง
+      // ซึ่งใน headless มักเป็นตัวแพงสุด (opus/fable) — เตือนครั้งเดียวต่อการรัน
+      if (!picked.model && !warnedNoModel) {
+        warnedNoModel = true;
+        log('warn', '⚠ รอบนี้ไม่มี model กำหนด → claude จะใช้ default ของเครื่อง (อาจเป็นตัวแพง opus/fable = เผาโควตาเร็ว) — แนะนำ --model claude-sonnet-5 หรือใส่ "default" ใน model-rules');
+      }
+      if (rules && !planNow?.nextItem && !warnedNoNextItem) {
+        warnedNoNextItem = true;
+        log('warn', `model-rules เปิดอยู่แต่ไม่พบ checkbox "- [ ]" ใน ${cfg.stateFile} → เทียบ rule ไม่ได้ จะใช้ default ของ rules ตลอดทั้งรัน`);
+      }
 
       log(
         'info',
