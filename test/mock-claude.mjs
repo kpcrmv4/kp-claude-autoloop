@@ -37,6 +37,14 @@ setTimeout(() => {
     process.exit(1);
   }
   if (n === 2) {
+    // ok round whose STREAM mentions 429/"too many requests" (like reviewing
+    // rate-limit code) — regression: must NOT be classified as a usage limit
+    process.stdout.write(
+      JSON.stringify({
+        type: 'user',
+        message: { content: [{ type: 'tool_result', content: "return json({ error: 'Too many requests' }, { status: 429 })" }] },
+      }) + '\n',
+    );
     process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result: 'round 1 done, state updated' }) + '\n');
     process.exit(0);
   }

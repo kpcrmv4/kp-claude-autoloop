@@ -113,12 +113,19 @@ export function classifyResult({ code, stdout = '', stderr = '' }) {
   const text = `${stdout}\n${stderr}`;
   const json = tryParseJsonResult(stdout);
 
-  const jsonIsError = json ? json.is_error === true : false;
-  const jsonText = json ? String(json.result ?? json.error ?? '') : '';
+  // With a structured result event we trust IT, not the raw stream: the
+  // stream carries code and tool results, so a SUCCESSFUL round that merely
+  // mentions 429 / "rate limit" (e.g. reviewing a rate-limited API route)
+  // must never be misread as a quota hit.
+  if (json) {
+    const jsonText = String(json.result ?? json.error ?? '');
+    const limited = json.is_error === true && LIMIT_RE.test(`${jsonText}\n${stderr}`);
+    const ok = json.is_error !== true && code === 0;
+    return { limited, ok, otherError: !limited && !ok, text };
+  }
 
-  const limited = LIMIT_RE.test(text) || (jsonIsError && LIMIT_RE.test(jsonText));
-  const ok = !limited && code === 0 && jsonIsError !== true;
-  const otherError = !limited && !ok;
-
-  return { limited, ok, otherError, text };
+  // No structured result (crashed / killed / non-JSON mode) → scan raw output.
+  const limited = LIMIT_RE.test(text);
+  const ok = !limited && code === 0;
+  return { limited, ok, otherError: !limited && !ok, text };
 }
