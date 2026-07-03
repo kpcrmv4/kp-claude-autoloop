@@ -118,8 +118,9 @@ export function makeSplitScreen(stream = process.stdout) {
     open(headerLines) {
       headerHeight = headerLines.length;
       const rows = stream.rows || 40;
-      // clear screen, paint header, then confine scrolling to below it
-      stream.write('\x1b[2J\x1b[H');
+      // push the current viewport into scrollback first (so history stays
+      // readable top-to-bottom when scrolling up), then start a fresh screen
+      stream.write('\n'.repeat(rows) + '\x1b[2J\x1b[H');
       stream.write(headerLines.join('\n') + '\n');
       stream.write(`\x1b[${headerHeight + 1};${rows}r`);
       stream.write(`\x1b[${rows};1H`);
@@ -137,9 +138,11 @@ export function makeSplitScreen(stream = process.stdout) {
     close() {
       if (!active) return;
       active = false;
-      stream.write('\x1b[r'); // reset scroll region
-      const rows = stream.rows || 40;
-      stream.write(`\x1b[${rows};1H\n`);
+      // reset the scroll region WITHOUT losing the cursor position —
+      // DECSTBM reset homes the cursor, so save/restore around it.
+      // Subsequent output then continues right under the streamed log
+      // instead of jumping to the bottom row (which left a huge gap).
+      stream.write('\x1b7\x1b[r\x1b8\n');
     },
   };
 }
