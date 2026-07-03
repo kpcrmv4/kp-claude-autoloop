@@ -57,6 +57,13 @@
     border-radius: 8px; font-size: .72rem; line-height: 1.55; max-height: 260px; overflow: auto;
     white-space: pre-wrap; word-break: break-all; color: #9da7b3;
   }
+  textarea.rules {
+    width: 100%; margin-top: .5rem; min-height: 150px; padding: .7rem .8rem; resize: vertical;
+    background: #0a0d12; border: 1px solid var(--border); border-radius: 8px;
+    font-family: Consolas, monospace; font-size: .74rem; line-height: 1.5; color: var(--text);
+  }
+  textarea.rules:focus { outline: none; border-color: var(--accent); }
+  .rulesout { font-size: .75rem; align-self: center; }
   .empty { color: var(--dim); text-align: center; padding: 2.2rem 0; font-size: .9rem; }
   h2 { font-size: .95rem; font-weight: 600; margin: 1.8rem 0 .8rem; color: var(--dim); letter-spacing: .03em; }
   form.start { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
@@ -89,7 +96,20 @@
       <div class="full"><label>Session (แนะนำระบุ — ไม่เลือก = --continue แชทล่าสุดใน cwd)</label>
         <select name="session"><option value="">— แชทล่าสุดใน cwd —</option></select></div>
       <div><label>Prompt file (hot-reload ทุกรอบ)</label><input name="promptFile" placeholder="F:\my-proj\docs\round-prompt.txt"></div>
-      <div><label>Model rules (กันเผาโควตา — แนะนำ)</label><input name="modelRules" placeholder="F:\my-proj\docs\model-rules.json"></div>
+      <div><label>Model rules (สลับ model ต่อรอบตามความยากงาน — แนะนำ)</label><input name="modelRules" placeholder="F:\my-proj\docs\model-rules.json"></div>
+      <div><label>Model (fallback เมื่อไม่มี rules — อย่าปล่อย default เครื่อง)</label>
+        <select name="model">
+          <option value="claude-sonnet-5">claude-sonnet-5 (แนะนำ)</option>
+          <option value="claude-opus-4-8">claude-opus-4-8</option>
+          <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+          <option value="">— default เครื่อง (เสี่ยงเผาโควตา) —</option>
+        </select></div>
+      <div><label>Effort</label>
+        <select name="effort">
+          <option value="high">high</option><option value="medium">medium</option>
+          <option value="low">low</option><option value="max">max</option>
+          <option value="">— default —</option>
+        </select></div>
       <div><label>Max cycles</label><input name="maxCycles" type="number" value="20" min="1"></div>
       <div><label>Permission mode</label>
         <select name="permissionMode"><option value="acceptEdits">acceptEdits</option><option value="default">default</option><option value="plan">plan</option></select></div>
@@ -129,6 +149,7 @@ function runCard(r) {
       ${r.cycles != null ? `<span>รอบสำเร็จ <b>${r.cycles}</b></span>` : ''}
       ${r.waits ? `<span>โดนลิมิต <b>${r.waits}</b> ครั้ง</span>` : ''}
       ${r.sessionId ? `<span>session <b>${esc(r.sessionId.slice(0, 8))}</b></span>` : ''}
+      ${r.model ? `<span>model รอบนี้ <b>${esc(r.model)}${r.effort ? '/' + esc(r.effort) : ''}</b>${r.modelRule ? ` <span title="${esc(r.modelRule)}">(ตาม rule)</span>` : ''}</span>` : ''}
       ${st === 'sleeping' && r.resumeAt ? `<span>ตื่นในอีก <span class="countdown">${countdown(r.resumeAt)}</span></span>` : ''}
       ${st === 'done' && r.doneReason ? `<span>จบเพราะ <b>${esc(r.doneReason)}</b></span>` : ''}
     </div>
@@ -141,18 +162,37 @@ function runCard(r) {
       <summary>log ล่าสุด</summary>
       <pre class="log" data-log>…</pre>
     </details>
+    ${r.modelRulesFile ? `<details ${openRules.has(r.stateFile) ? 'open' : ''} ontoggle="toggleRules(this, '${escJs(r.stateFile)}', '${escJs(r.modelRulesFile)}')">
+      <summary>⚙ model rules — แก้สดได้ (engine hot-reload รอบถัดไป)</summary>
+      <textarea class="rules" data-rules spellcheck="false"></textarea>
+      <div class="actions"><button onclick="saveRules(this, '${escJs(r.modelRulesFile)}')">💾 บันทึก</button><span class="rulesout" data-rulesout></span></div>
+    </details>` : ''}
   </div>`;
 }
 
 const escJs = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 const openLogs = new Set();
+const openRules = new Set();
+const rulesDraft = new Map(); // stateFile → unsaved textarea content (survives the 2s repaint)
 
 async function refresh() {
   try {
     const { runs } = await (await fetch('/api/runs')).json();
     const box = $('#runs');
+    // stash unsaved rules edits before the repaint wipes the textareas
+    for (const ta of box.querySelectorAll('textarea[data-rules]')) {
+      const state = ta.closest('.card').dataset.state;
+      if (openRules.has(state)) rulesDraft.set(state, ta.value);
+    }
     box.innerHTML = runs.length ? runs.map(runCard).join('') : '<div class="empty">ยังไม่มี run — เริ่มอันแรกจากฟอร์มด้านล่าง หรือรัน autoloop start จาก CLI แล้วจะโผล่ที่นี่เอง</div>';
-    for (const el of box.querySelectorAll('details[open]')) loadLog(el);
+    for (const el of box.querySelectorAll('details[open]')) {
+      if (el.querySelector('[data-log]')) loadLog(el);
+      const ta = el.querySelector('textarea[data-rules]');
+      if (ta) {
+        const state = el.closest('.card').dataset.state;
+        if (rulesDraft.has(state)) ta.value = rulesDraft.get(state);
+      }
+    }
   } catch { /* server gone — keep last view */ }
 }
 
@@ -164,6 +204,27 @@ async function loadLog(detailsEl) {
 }
 
 function toggleLog(el, state) { el.open ? openLogs.add(state) : openLogs.delete(state); if (el.open) loadLog(el); }
+
+async function toggleRules(el, state, rulesPath) {
+  if (!el.open) { openRules.delete(state); rulesDraft.delete(state); return; }
+  openRules.add(state);
+  const ta = el.querySelector('textarea[data-rules]');
+  if (rulesDraft.has(state)) { ta.value = rulesDraft.get(state); return; }
+  const res = await fetch('/api/model-rules?path=' + encodeURIComponent(rulesPath));
+  const data = await res.json();
+  ta.value = res.ok ? data.content : `(อ่านไม่ได้: ${data.error})`;
+  rulesDraft.set(state, ta.value);
+}
+
+async function saveRules(btn, rulesPath) {
+  const card = btn.closest('.card');
+  const ta = card.querySelector('textarea[data-rules]');
+  const out = card.querySelector('[data-rulesout]');
+  const { ok, data } = await post('/api/model-rules', { path: rulesPath, content: ta.value });
+  out.textContent = ok ? (data.warn ? '⚠ ' + data.warn : '✓ บันทึกแล้ว — มีผลรอบถัดไป') : '✗ ' + (data.error || 'บันทึกไม่สำเร็จ');
+  out.style.color = ok ? (data.warn ? 'var(--amber)' : 'var(--green)') : 'var(--red)';
+  if (ok) rulesDraft.set(card.dataset.state, ta.value);
+}
 
 async function post(path, body) {
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-autoloop': '1' }, body: JSON.stringify(body) });

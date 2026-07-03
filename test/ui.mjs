@@ -2,7 +2,7 @@
 // Dashboard tests: registry round-trip, start-args validation, and a live
 // HTTP round-trip on an ephemeral port. AUTOLOOP_HOME keeps everything in tmp.
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -44,12 +44,15 @@ test('startArgsFromPayload: full payload → correct argv (unknown keys ignored)
     session: 'abc',
     promptFile: 'p.txt',
     modelRules: 'rules.json',
+    model: 'claude-sonnet-5',
+    effort: 'high',
     maxCycles: '7',
     hacker: '--dangerously-skip-permissions', // must NOT pass through
   });
   assert.deepEqual(args, [
     'start', '--cwd', dir, '--state-file', stateFile,
     '--session', 'abc', '--prompt-file', 'p.txt', '--model-rules', 'rules.json',
+    '--model', 'claude-sonnet-5', '--effort', 'high',
     '--max-cycles', '7', '--permission-mode', 'acceptEdits',
   ]);
 });
@@ -95,6 +98,45 @@ test('http: GET / = html · GET /api/runs = json · POST w/o header = 403 · bad
     assert.equal(badStart.status, 400);
   } finally {
     await new Promise((r) => server.close(r)); // fully closed before exit — Windows libuv asserts otherwise
+  }
+});
+
+// ── model-rules editor endpoints ──
+test('model-rules api: read/write only registered rules files, JSON validated', async () => {
+  const stateFile = join(dir, 'RULED.md');
+  const rulesFile = join(dir, 'rules.json');
+  writeFileSync(stateFile, '- [ ] x\n');
+  writeFileSync(rulesFile, JSON.stringify({ default: { model: 'claude-sonnet-5' }, rules: [] }));
+  writeFileSync(`${stateFile}.autoloop.json`, JSON.stringify({ status: 'running', modelRulesFile: rulesFile }));
+  registerRun(stateFile, { cwd: dir });
+
+  const { server, port } = await startUiServer({ port: 0 });
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    const post = (body) => fetch(base + '/api/model-rules', {
+      method: 'POST', headers: { 'x-autoloop': '1', 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+
+    const read = await fetch(base + '/api/model-rules?path=' + encodeURIComponent(rulesFile));
+    assert.equal(read.status, 200);
+    assert.match((await read.json()).content, /claude-sonnet-5/);
+
+    const strangerRead = await fetch(base + '/api/model-rules?path=' + encodeURIComponent(join(dir, 'other.json')));
+    assert.equal(strangerRead.status, 403); // ไฟล์นอกรายการ run — ห้ามอ่าน/เขียน
+
+    const badJson = await post({ path: rulesFile, content: '{broken' });
+    assert.equal(badJson.status, 400);
+
+    const noDefault = await post({ path: rulesFile, content: JSON.stringify({ rules: [] }) });
+    assert.equal(noDefault.status, 200);
+    assert.ok((await noDefault.json()).warn, 'saving rules without default must warn');
+
+    const good = await post({ path: rulesFile, content: JSON.stringify({ default: { model: 'claude-haiku-4-5' }, rules: [] }) });
+    assert.equal(good.status, 200);
+    assert.match(readFileSync(rulesFile, 'utf8'), /claude-haiku-4-5/); // เขียนถึงดิสก์จริง
+  } finally {
+    await new Promise((r) => server.close(r));
+    unregisterRun(stateFile);
   }
 });
 

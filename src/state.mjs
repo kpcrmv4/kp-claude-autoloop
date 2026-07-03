@@ -27,6 +27,21 @@ export function stopMarkerPresent(stateFile, marker) {
   }
 }
 
+/**
+ * Strict completion claim from the agent's reply: the LAST non-empty line must
+ * BE the marker. A mere mention ("ยังไม่ถึงเงื่อนไข AUTOLOOP: COMPLETE …")
+ * anywhere in the reply must never stop the loop — the round prompt's contract
+ * is "ตอบแค่ <marker>".
+ */
+export function replyAnnouncesMarker(replyText, marker) {
+  if (!marker || !replyText) return false;
+  const lines = String(replyText)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return lines.length > 0 && lines[lines.length - 1] === marker;
+}
+
 export function readRuntime(stateFile) {
   try {
     return JSON.parse(readFileSync(runtimePath(stateFile), 'utf8'));

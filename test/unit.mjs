@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadModelRules, pickModelForCycle } from '../src/model-rules.mjs';
 import { setLogFile, log } from '../src/log.mjs';
+import { replyAnnouncesMarker } from '../src/state.mjs';
+import { classifyResult } from '../src/limit.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'autoloop-unit-'));
 const writeRules = (name, obj) => {
@@ -107,6 +109,38 @@ test('unreadable rules file → warn + CLI fallback', () => {
   assert.ok(warn, 'expected parse warn');
   const p = pickModelForCycle(rules, 'x', { model: 'claude-sonnet-5' });
   assert.equal(p.model, 'claude-sonnet-5');
+});
+
+// ── strict stop-marker: บรรทัดสุดท้ายของคำตอบต้องเป็น marker เป๊ะ ๆ ──
+const M = 'AUTOLOOP: COMPLETE';
+
+test('replyAnnouncesMarker: exact reply / marker as last line → true', () => {
+  assert.equal(replyAnnouncesMarker(M, M), true);
+  assert.equal(replyAnnouncesMarker(`สรุปงานรอบนี้...\n\n${M}\n`, M), true);
+});
+
+test('replyAnnouncesMarker: mere mention must NOT stop the loop (false-done bug)', () => {
+  assert.equal(replyAnnouncesMarker(`ยังไม่ครบทุกข้อ จึงยังไม่เติม ${M} ท้ายไฟล์`, M), false);
+  assert.equal(replyAnnouncesMarker(`${M} คือ marker ที่จะใช้\nทำงานต่อรอบหน้า`, M), false);
+  assert.equal(replyAnnouncesMarker('', M), false);
+  assert.equal(replyAnnouncesMarker(M, ''), false);
+});
+
+test('classifyResult: replyText = structured result only, not the raw stream', () => {
+  const stream =
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: `เงื่อนไขจบคือ ${M}` }] } }) +
+    '\n' +
+    JSON.stringify({ type: 'result', is_error: false, result: 'ทำ 3 unit เสร็จ ยังไม่ครบแผน' }) +
+    '\n';
+  const v = classifyResult({ code: 0, stdout: stream });
+  assert.equal(v.ok, true);
+  assert.equal(v.replyText, 'ทำ 3 unit เสร็จ ยังไม่ครบแผน');
+  assert.equal(replyAnnouncesMarker(v.replyText, M), false); // stream พูดถึง marker แต่คำตอบจริงไม่ได้ประกาศจบ
+});
+
+test('classifyResult: no structured result → replyText falls back to raw text', () => {
+  const v = classifyResult({ code: 0, stdout: `plain output\n${M}\n` });
+  assert.equal(replyAnnouncesMarker(v.replyText, M), true);
 });
 
 const captureConsole = (fn) => {

@@ -107,7 +107,11 @@ function tryParseJsonResult(stdout) {
 
 /**
  * Classify a finished claude run.
- * @returns {{limited:boolean, ok:boolean, otherError:boolean, text:string}}
+ * `replyText` is the agent's FINAL reply only (structured result) — stop-marker
+ * checks must use it, never `text`: the raw stream carries tool results and
+ * file contents (e.g. the round prompt itself quoting the marker), so matching
+ * against the whole stream stops the loop on a mere mention.
+ * @returns {{limited:boolean, ok:boolean, otherError:boolean, text:string, replyText:string}}
  */
 export function classifyResult({ code, stdout = '', stderr = '' }) {
   const text = `${stdout}\n${stderr}`;
@@ -121,11 +125,11 @@ export function classifyResult({ code, stdout = '', stderr = '' }) {
     const jsonText = String(json.result ?? json.error ?? '');
     const limited = json.is_error === true && LIMIT_RE.test(`${jsonText}\n${stderr}`);
     const ok = json.is_error !== true && code === 0;
-    return { limited, ok, otherError: !limited && !ok, text };
+    return { limited, ok, otherError: !limited && !ok, text, replyText: jsonText };
   }
 
   // No structured result (crashed / killed / non-JSON mode) → scan raw output.
   const limited = LIMIT_RE.test(text);
   const ok = !limited && code === 0;
-  return { limited, ok, otherError: !limited && !ok, text };
+  return { limited, ok, otherError: !limited && !ok, text, replyText: text };
 }

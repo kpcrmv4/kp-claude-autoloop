@@ -4,7 +4,7 @@ import { runClaudeOnce } from './runner.mjs';
 import { classifyResult, parseResetMs } from './limit.mjs';
 import { sleepUntil } from './sleep.mjs';
 import { log } from './log.mjs';
-import { stopMarkerPresent, updateRuntime } from './state.mjs';
+import { stopMarkerPresent, replyAnnouncesMarker, updateRuntime } from './state.mjs';
 import { notifyAll } from './notify.mjs';
 import { readPlanProgress, renderWaitPanel, makePanelPainter, renderWorkHeader, makeSplitScreen } from './tui.mjs';
 import { formatStreamEvent, makeJsonlSplitter } from './stream.mjs';
@@ -81,6 +81,7 @@ export async function runEngine(cfg) {
     cwd: cfg.cwd,
     sessionId: cfg.sessionId || null,
     stopMarker: cfg.stopMarker,
+    modelRulesFile: cfg.modelRulesFile || null,
     cycles: 0,
     waits: 0,
     lastResult: null,
@@ -147,7 +148,15 @@ export async function runEngine(cfg) {
           (planNow ? ` · แผน ${planNow.done}/${planNow.total} ข้อ (${planNow.pct}%)${planNow.nextItem ? ` · ถัดไป: ${planNow.nextItem}` : ''}` : ''),
       );
       // resumeAt: null — พ้นช่วงหลับแล้ว อย่าปล่อยเวลาปลุกเก่าค้างให้คนอ่านสับสน
-      updateRuntime(cfg.stateFile, { status: 'running', lastCycleStartedAt: new Date().toISOString(), resumeAt: null });
+      // model/effort/modelRule → dashboard โชว์ได้ว่ารอบนี้ rule เลือกอะไรให้
+      updateRuntime(cfg.stateFile, {
+        status: 'running',
+        lastCycleStartedAt: new Date().toISOString(),
+        resumeAt: null,
+        model: picked.model || null,
+        effort: picked.effort || null,
+        modelRule: picked.matched || null,
+      });
 
       // ── live split-screen: pinned progress header on top, Claude's activity
       //    streaming underneath (TTY only; detached/log mode stays plain) ──
@@ -283,7 +292,10 @@ export async function runEngine(cfg) {
         }
 
         // agent announced completion in its reply (belt & braces with the file marker)
-        if (cfg.stopMarker && verdict.text.includes(cfg.stopMarker)) {
+        // — strict: last line of the FINAL reply must BE the marker; a mention in
+        // the stream/tool-results/summary must never stop the loop (bug: false
+        // "done" after 1 cycle when the agent merely discussed the marker)
+        if (cfg.stopMarker && replyAnnouncesMarker(verdict.replyText, cfg.stopMarker)) {
           log('info', `agent ตอบ stop marker "${cfg.stopMarker}" — งานจบแล้ว ✅`);
           updateRuntime(cfg.stateFile, { status: 'done', doneReason: 'reply-marker' });
           await notify({ status: 'done', message: 'ตัวทำงานยืนยันว่างานเสร็จครบแล้ว 🎉', cycles });

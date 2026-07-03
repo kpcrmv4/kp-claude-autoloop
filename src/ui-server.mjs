@@ -6,7 +6,7 @@
 // the custom `x-autoloop` header — a cross-origin page can't set it without
 // a CORS preflight, which this server never grants.
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,9 +55,20 @@ export function collectRuns() {
       resumeAt: rt.resumeAt || null,
       doneReason: rt.doneReason || null,
       lastError: rt.lastError ? String(rt.lastError).slice(-300) : null,
+      model: rt.model || null,
+      effort: rt.effort || null,
+      modelRule: rt.modelRule || null,
+      modelRulesFile: rt.modelRulesFile || null,
       plan: readPlanProgress(r.stateFile),
     };
   });
+}
+
+/** Editable-from-UI files are ONLY the model-rules paths of registered runs. */
+function isKnownRulesFile(path) {
+  if (!path) return false;
+  const key = resolve(path);
+  return collectRuns().some((r) => r.modelRulesFile && resolve(r.modelRulesFile) === key);
 }
 
 function json(res, code, body) {
@@ -130,6 +141,19 @@ async function handle(req, res) {
     json(res, 200, { lines: logTail(stateFile, lines) });
     return;
   }
+  if (req.method === 'GET' && path === '/api/model-rules') {
+    const p = url.searchParams.get('path') || '';
+    if (!isKnownRulesFile(p)) {
+      json(res, 403, { error: 'path นี้ไม่ใช่ model-rules ของ run ที่ลงทะเบียนไว้' });
+      return;
+    }
+    try {
+      json(res, 200, { content: readFileSync(p, 'utf8') });
+    } catch (err) {
+      json(res, 404, { error: err.message });
+    }
+    return;
+  }
   if (req.method === 'GET' && path === '/api/sessions') {
     const sessions = await listSessions(25);
     json(res, 200, {
@@ -185,6 +209,28 @@ async function handle(req, res) {
     if (path === '/api/forget') {
       unregisterRun(body.stateFile || '');
       json(res, 200, { ok: true });
+      return;
+    }
+    if (path === '/api/model-rules') {
+      // engine hot-reloads the file every cycle → saving here takes effect next round
+      if (!isKnownRulesFile(body.path)) {
+        json(res, 403, { error: 'path นี้ไม่ใช่ model-rules ของ run ที่ลงทะเบียนไว้' });
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(body.content);
+      } catch (err) {
+        json(res, 400, { error: `JSON ไม่ถูกต้อง: ${err.message}` });
+        return;
+      }
+      try {
+        writeFileSync(body.path, JSON.stringify(parsed, null, 2) + '\n');
+        const hasDefault = parsed.default && (parsed.default.model || parsed.default.effort);
+        json(res, 200, { ok: true, warn: hasDefault ? null : 'ไม่มี "default" — งานที่ไม่ match rule จะตกไป default เครื่อง (อาจแพง)' });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
       return;
     }
   }
