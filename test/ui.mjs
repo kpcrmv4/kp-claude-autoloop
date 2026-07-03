@@ -215,6 +215,28 @@ test('http: GET / = html · GET /api/runs = json · POST w/o header = 403 · bad
     });
     assert.equal(d.status, 404);
     assert.equal(JSON.parse(readFileSync(`${deadState}.autoloop.json`, 'utf8')).status, 'stopped');
+
+    // rerun guards: unknown run → 404 · still running → 409 · marker present → 400
+    const rr = (payload) => fetch(base + '/api/rerun', {
+      method: 'POST', headers: { 'x-autoloop': '1', 'content-type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    assert.equal((await rr({ stateFile: join(dir, 'ghost.md') })).status, 404);
+
+    const busyState = join(dir, 'BUSY.md');
+    writeFileSync(busyState, '- [ ] x\n');
+    writeFileSync(`${busyState}.autoloop.json`, JSON.stringify({ status: 'running', pid: process.pid }));
+    registerRun(busyState, { cwd: dir });
+    assert.equal((await rr({ stateFile: busyState })).status, 409);
+    unregisterRun(busyState);
+
+    const doneState = join(dir, 'DONE.md');
+    writeFileSync(doneState, '- [x] x\n\nAUTOLOOP: COMPLETE\n');
+    writeFileSync(`${doneState}.autoloop.json`, JSON.stringify({ status: 'done', pid: 999999, stopMarker: 'AUTOLOOP: COMPLETE' }));
+    registerRun(doneState, { cwd: dir });
+    const doneRes = await rr({ stateFile: doneState });
+    assert.equal(doneRes.status, 400);
+    assert.match((await doneRes.json()).error, /จบแล้ว/);
+    unregisterRun(doneState);
   } finally {
     await new Promise((r) => server.close(r)); // fully closed before exit — Windows libuv asserts otherwise
   }

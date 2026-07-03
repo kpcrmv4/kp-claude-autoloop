@@ -125,11 +125,12 @@ export function classifyResult({ code, stdout = '', stderr = '' }) {
     const jsonText = String(json.result ?? json.error ?? '');
     const limited = json.is_error === true && LIMIT_RE.test(`${jsonText}\n${stderr}`);
     const ok = json.is_error !== true && code === 0;
-    return { limited, ok, otherError: !limited && !ok, text, replyText: jsonText };
+    const sessionId = typeof json.session_id === 'string' && json.session_id ? json.session_id : null;
+    return { limited, ok, otherError: !limited && !ok, text, replyText: jsonText, sessionId };
   }
 
   // No structured result (crashed / killed / non-JSON mode) → scan raw output.
   const limited = LIMIT_RE.test(text);
   const ok = !limited && code === 0;
-  return { limited, ok, otherError: !limited && !ok, text, replyText: text };
+  return { limited, ok, otherError: !limited && !ok, text, replyText: text, sessionId: null };
 }

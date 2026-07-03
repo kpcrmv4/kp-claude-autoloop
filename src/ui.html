@@ -315,6 +315,7 @@ const L = {
     stopSoon: 'stop requested — finishing the current job first…',
     forceBtn: 'Kill now', forceConfirm: 'Kill it right now, mid-work? The node/claude processes are terminated immediately; unfinished work gets recovered on the next run.',
     stopBtn: 'Stop (after the current job finishes)', forgetBtn: 'Remove from list',
+    rerunBtn: 'Run again (same session)', rerunStarting: 'starting…', rerunStarted: 'started ✓',
     logSummary: 'latest log', noLog: '(no log yet)',
     rulesSummary: 'model rules — live-editable (engine hot-reloads next round)',
     saveBtn: 'Save', savedOk: '✓ saved — applies next round', saveFail: '✗ save failed',
@@ -367,6 +368,7 @@ const L = {
     stopSoon: 'สั่งหยุดแล้ว — รอเก็บงานปัจจุบันให้จบก่อน…',
     forceBtn: 'ปิดทันที', forceConfirm: 'ปิดทันทีกลางคันเลยไหม? โปรเซส node/claude ที่กำลังทำงานจะถูกตัดทิ้ง งานที่ค้างจะถูกกู้ตอนรันรอบถัดไป',
     stopBtn: 'หยุด (หลังงานปัจจุบันเสร็จ)', forgetBtn: 'ลบออกจากลิสต์',
+    rerunBtn: 'รันต่อจากเดิม (session เดิม)', rerunStarting: 'กำลังเริ่ม…', rerunStarted: 'เริ่มแล้ว ✓',
     logSummary: 'log ล่าสุด', noLog: '(ยังไม่มี log)',
     rulesSummary: 'model rules — แก้สดได้ (engine hot-reload รอบถัดไป)',
     saveBtn: 'บันทึก', savedOk: '✓ บันทึกแล้ว — มีผลรอบถัดไป', saveFail: '✗ บันทึกไม่สำเร็จ',
@@ -470,7 +472,9 @@ function runCard(r) {
              <button class="danger inline-flex items-center gap-1.5" onclick="stopRun('${escA(r.stateFile)}', true)">${icon('x')}${t('forceBtn')}</button>`
           : `<button class="inline-flex items-center gap-1.5" onclick="stopRun('${escA(r.stateFile)}')">${icon('square')}${t('stopBtn')}</button>
              <button class="danger inline-flex items-center gap-1.5" onclick="stopRun('${escA(r.stateFile)}', true)">${icon('x')}${t('forceBtn')}</button>`)
-        : `<button onclick="forgetRun('${escA(r.stateFile)}')">${t('forgetBtn')}</button>`}
+        : `<button class="primary inline-flex items-center gap-1.5" onclick="rerunRun(this, '${escA(r.stateFile)}')">${icon('play')}${t('rerunBtn')}</button>
+           <button onclick="forgetRun('${escA(r.stateFile)}')">${t('forgetBtn')}</button>`}
+      ${cardNote(r.stateFile)}
     </div>
     <details class="mt-2.5" ${open ? 'open' : ''} ontoggle="toggleLog(this, '${escA(r.stateFile)}')">
       <summary>${t('logSummary')}</summary>
@@ -548,6 +552,22 @@ async function stopRun(stateFile, force = false) {
   if (force && !confirm(t('forceConfirm'))) return;
   await post('/api/stop', { stateFile, force });
   refresh();
+}
+
+// per-card status note that survives the 2s repaint (shown ≤20s)
+const cardNotes = new Map(); // stateFile → {text, color, ts}
+function setCardNote(stateFile, text, color) { cardNotes.set(stateFile, { text, color, ts: Date.now() }); refresh(); }
+function cardNote(stateFile) {
+  const n = cardNotes.get(stateFile);
+  if (!n || Date.now() - n.ts > 20000) return '';
+  return `<span class="text-[.75rem]" style="color:${n.color}">${esc(n.text)}</span>`;
+}
+
+async function rerunRun(btn, stateFile) {
+  setCardNote(stateFile, t('rerunStarting'), 'var(--dim)');
+  const { ok, data } = await post('/api/rerun', { stateFile });
+  if (ok) setCardNote(stateFile, t('rerunStarted'), 'var(--green)');
+  else setCardNote(stateFile, data.error || data.output || 'failed', 'var(--red)');
 }
 async function forgetRun(stateFile) { await post('/api/forget', { stateFile }); refresh(); }
 

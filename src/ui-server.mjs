@@ -219,6 +219,7 @@ export function startArgsFromPayload(p) {
   if (p.model) args.push('--model', p.model);
   if (p.effort) args.push('--effort', p.effort);
   if (p.maxCycles) args.push('--max-cycles', String(Number(p.maxCycles) || 30));
+  if (p.stopMarker) args.push('--stop-marker', String(p.stopMarker));
   args.push('--permission-mode', p.permissionMode || 'acceptEdits');
   // notify default = on when secrets exist (engine behavior) — only explicit opt-out disables
   if (p.notify === false || p.notify === 'false' || p.notify === 'off') args.push('--no-notify');
@@ -336,6 +337,56 @@ async function handle(req, res) {
         json(res, 400, { error: err.message });
         return;
       }
+      const result = await runStart(args);
+      json(res, result.code === 0 ? 200 : 500, result);
+      return;
+    }
+    // restart a finished/stopped/dead run with the exact config of its last run
+    // (from the sidecar) — resuming the pinned session so it's the SAME chat
+    if (path === '/api/rerun') {
+      const stateFile = body.stateFile || '';
+      const rt = readRuntime(stateFile);
+      const reg = readRegistry().find((r) => resolve(r.stateFile) === resolve(stateFile || '.'));
+      if (!rt || !reg) {
+        json(res, 404, { error: 'ไม่พบข้อมูล run นี้' });
+        return;
+      }
+      if (rt.pid && pidAlive(rt.pid) && ['running', 'sleeping'].includes(rt.status)) {
+        json(res, 409, { error: 'ยังรันอยู่ — หยุดก่อนถ้าจะเริ่มใหม่' });
+        return;
+      }
+      // work truly done (marker in the state file) → a rerun would exit on round 0.
+      // the next batch of work needs planning first, not a blind restart
+      const marker = rt.stopMarker || 'AUTOLOOP: COMPLETE';
+      try {
+        if (readFileSync(stateFile, 'utf8').includes(marker)) {
+          json(res, 400, { error: `งานชุดนี้จบแล้ว (มี "${marker}" ใน state file) — ให้ Claude เพิ่มแผนงานรอบใหม่/ลบ marker ก่อน แล้วค่อยรันต่อ` });
+          return;
+        }
+      } catch { /* state unreadable → let startArgsFromPayload report it */ }
+      const c = rt.restart || {};
+      let args;
+      try {
+        args = startArgsFromPayload({
+          cwd: reg.cwd || rt.cwd,
+          stateFile,
+          session: rt.sessionId || '',
+          promptFile: c.promptFile || '',
+          prompt: c.prompt || '',
+          modelRules: c.modelRulesFile || rt.modelRulesFile || '',
+          model: c.model || '',
+          effort: c.effort || '',
+          maxCycles: c.maxCycles || 20,
+          stopMarker: rt.stopMarker || '',
+          permissionMode: c.permissionMode || 'acceptEdits',
+          notify: c.noNotify ? false : undefined,
+        });
+      } catch (err) {
+        json(res, 400, { error: err.message });
+        return;
+      }
+      // claudeCmd comes only from the sidecar a previous run wrote (test hook) — never from the browser
+      if (c.claudeCmd) args.push('--claude-cmd', c.claudeCmd);
       const result = await runStart(args);
       json(res, result.code === 0 ? 200 : 500, result);
       return;

@@ -125,6 +125,18 @@ export async function runEngine(cfg) {
     stopRequestedAt: null,
     activity: null,
     activityAt: null,
+    // everything the dashboard needs to offer "run again" later, verbatim
+    restart: {
+      promptFile: cfg.promptFile || null,
+      prompt: cfg.promptFile ? null : cfg.prompt || null,
+      maxCycles: cfg.maxCycles,
+      permissionMode: cfg.permissionMode || null,
+      model: cfg.model || null,
+      effort: cfg.effort || null,
+      modelRulesFile: cfg.modelRulesFile || null,
+      claudeCmd: cfg.claudeCmd !== 'claude' ? cfg.claudeCmd : null,
+      noNotify: cfg.noNotify || false,
+    },
   });
   registerRun(cfg.stateFile, { cwd: cfg.cwd }); // ให้ dashboard (autoloop ui) มองเห็น run นี้
   await notify({ status: 'start', message: `จะทำงานเองสูงสุด ${cfg.maxCycles} รอบจนกว่างานจะเสร็จ · ถ้าโควตาหมดจะพักรอแล้วกลับมาทำต่อเองอัตโนมัติ` });
@@ -331,10 +343,18 @@ export async function runEngine(cfg) {
       if (verdict.ok) {
         cycles += 1;
         log('info', `✓ รอบสำเร็จ (${cycles}/${cfg.maxCycles})`);
+        // pin the real session after the first round: --continue can grab the
+        // wrong chat if the user opens a new one in cwd mid-loop — once we know
+        // the actual id from the result event, resume THAT session from now on
+        if (!cfg.sessionId && verdict.sessionId) {
+          cfg.sessionId = verdict.sessionId;
+          log('info', `ล็อก session ${verdict.sessionId.slice(0, 8)} — รอบถัดไป resume ตัวนี้ตรง ๆ (กันคว้าแชทผิด)`);
+        }
         updateRuntime(cfg.stateFile, {
           status: 'running',
           lastResult: 'ok',
           cycles,
+          sessionId: cfg.sessionId || null,
           lastCycleFinishedAt: new Date().toISOString(),
         });
         if (wasLimited) {
