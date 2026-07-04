@@ -264,6 +264,11 @@ When done, tell me this chat's session id.</pre>
       <div class="step"><b>2 · Check the token</b> — paste it below, then press "Check token".</div>
       <div class="step"><b>3 · Say hi to your bot</b> — open a chat with the bot (link appears after the check) and send it any message, so we can find your chat id.</div>
       <div class="step"><b>4 · Save</b> — press "Find chat id", confirm, then "Save + send test". Loop events (start / quota limit / resume / done / error) will be pushed to that chat.</div>
+      <div class="step"><b>After that, the chat works both ways</b> — while this dashboard is running, message the bot:
+        <br><code>/status</code> — live card of every job: progress bar, next item, what Claude is doing now, with tap-buttons (🔄 refresh / ⏹ stop / ▶ continue)
+        <br><code>/stop</code> — stop after the current job finishes (several jobs: <code>/stop 2</code>)
+        <br><code>/continue</code> — a job that hit its round cap gets a fresh budget and keeps going
+        <br>The bot answers this chat only — strangers who find it get silence.</div>
     </div>
     <div data-lang="th">
       <div class="step"><b>1 · สร้างบอท (ครั้งเดียว)</b>
@@ -271,6 +276,11 @@ When done, tell me this chat's session id.</pre>
       <div class="step"><b>2 · ตรวจ token</b> — วางในช่องด้านล่างแล้วกด "ตรวจ token"</div>
       <div class="step"><b>3 · ทักบอทก่อน</b> — เปิดแชทกับบอท (มีลิงก์ให้หลังตรวจผ่าน) แล้วส่งข้อความอะไรก็ได้ เพื่อให้ระบบหา chat id เจอ</div>
       <div class="step"><b>4 · บันทึก</b> — กด "หา chat id อัตโนมัติ" ยืนยัน แล้วกด "บันทึก + ส่งทดสอบ" · เหตุการณ์ของ loop (เริ่ม/ติดลิมิต/กลับมา/จบ/error) จะเด้งเข้าแชทนั้น</div>
+      <div class="step"><b>จากนั้นแชทโต้ตอบได้เลย</b> — ตราบใดที่ dashboard นี้เปิดอยู่ พิมพ์หาบอทได้จากมือถือ:
+        <br><code>/status</code> — การ์ดสถานะสดทุกงาน: แถบความคืบหน้า ข้อถัดไป สิ่งที่ Claude กำลังทำ พร้อมปุ่มจิ้มสั่ง (🔄 อัปเดต / ⏹ หยุด / ▶ ทำต่อ)
+        <br><code>/stop</code> — หยุดแบบรอจบงานปัจจุบันก่อน (หลายงานระบุเลข เช่น <code>/stop 2</code>)
+        <br><code>/continue</code> — งานที่ครบรอบแล้วยังไม่เสร็จ สั่งทำต่อด้วยงบรอบชุดใหม่
+        <br>บอทตอบเฉพาะแชทนี้เท่านั้น — คนอื่นทักมาจะถูกเมินเงียบ ๆ</div>
     </div>
 
     <div class="grid grid-cols-1 gap-3 mt-2">
