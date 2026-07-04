@@ -143,6 +143,20 @@ test('formatEventText: plan progress + next item ride along on every notificatio
   assert.ok(!bare.includes('ข้อ ('));
 });
 
+test('stopMarkerPresent: standalone line = done · mere mention in a sentence must NOT stop the loop', async () => {
+  const { stopMarkerPresent } = await import('../src/state.mjs');
+  const f = join(dir, 'MARKER-STATE.md');
+  // the real false-done case: a round-log line that TALKS ABOUT the marker
+  writeFileSync(f, '- [ ] งานเหลือ\n- 2026-07-04 · Round 97: … → ไม่เติม AUTOLOOP: COMPLETE เพราะยังมี blocker\n');
+  assert.equal(stopMarkerPresent(f, M), false, 'mention inside a sentence must not read as done');
+  writeFileSync(f, '- [x] ครบ\n\nAUTOLOOP: COMPLETE\n');
+  assert.equal(stopMarkerPresent(f, M), true, 'marker as its own line = done');
+  writeFileSync(f, '- [x] ครบ\n\n**AUTOLOOP: COMPLETE**\n');
+  assert.equal(stopMarkerPresent(f, M), true, 'markdown-bold marker line still counts');
+  writeFileSync(f, '- [x] ครบ\n');
+  assert.equal(stopMarkerPresent(f, M), false);
+});
+
 test('withLoopProtocol: appended when prompt lacks the marker, skipped when it covers it', () => {
   const bare = 'อ่าน state แล้วทำต่อ';
   const out = withLoopProtocol(bare, M);

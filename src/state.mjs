@@ -45,12 +45,24 @@ export function clearStopSignal(stateFile) {
   }
 }
 
-/** Does the work-state file contain the stop marker? (missing file = not stopped) */
+/**
+ * Does the work-state file DECLARE the stop marker? The contract is "เติมบรรทัด
+ * <marker> ท้ายไฟล์" — so the marker must BE a line of its own (markdown bold
+ * tolerated). A sentence that merely mentions it (e.g. a round-log line saying
+ * "ไม่เติม AUTOLOOP: COMPLETE เพราะ…") must NEVER stop the loop — a substring
+ * check here false-done'd a real 26-round run.
+ * (missing file = not stopped)
+ */
 export function stopMarkerPresent(stateFile, marker) {
   if (!marker) return false;
   try {
     if (!existsSync(stateFile)) return false;
-    return readFileSync(stateFile, 'utf8').includes(marker);
+    return readFileSync(stateFile, 'utf8')
+      .split(/\r?\n/)
+      .some((line) => {
+        const t = line.trim().replace(/^\*+\s*/, '').replace(/\s*\*+$/, '').trim();
+        return t === marker;
+      });
   } catch {
     return false; // unreadable state must never crash the watcher
   }
