@@ -2,7 +2,7 @@
 // Dashboard tests: registry round-trip, start-args validation, and a live
 // HTTP round-trip on an ephemeral port. AUTOLOOP_HOME keeps everything in tmp.
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -13,6 +13,7 @@ process.env.AUTOLOOP_SECRETS = join(dir, 'secrets.json'); // never touch the rea
 const { registerRun, unregisterRun, readRegistry, registryPath } = await import('../src/registry.mjs');
 const { startArgsFromPayload, collectRuns, startUiServer, telegramStatus, mergeTelegramSecrets, scanWorkflow } = await import('../src/ui-server.mjs');
 const { nodeVersionOk, buildInstallPlan } = await import('../src/doctor.mjs');
+const { formatStatusReply, handleCommand } = await import('../src/bot.mjs');
 
 const cases = [];
 const test = (name, fn) => cases.push([name, fn]);
@@ -111,6 +112,30 @@ test('scanWorkflow: finds plan files in docs/ and one level deeper, verifies che
   assert.equal(s3.stateFile, null);
   assert.equal(s3.promptFile, null);
   assert.equal(s3.modelRules, null);
+});
+
+// ── telegram bot commands (pure dispatch — no network) ──
+test('bot: /status renders every run state · /stop drops the graceful signal · unknown → help', () => {
+  const stateFile = join(dir, 'BOT.md');
+  writeFileSync(stateFile, '- [x] a\n- [ ] b\n');
+  const runs = [
+    { stateFile, cwd: 'F:/shop-app', status: 'running', alive: true, cycles: 2, plan: { done: 1, total: 2, pct: 50, nextItem: 'b' }, activity: 'Edit · x.ts' },
+    { stateFile: join(dir, 'other.md'), cwd: 'F:/other', status: 'done', doneReason: 'max-cycles', alive: false, plan: null },
+  ];
+  const status = handleCommand('/status', runs);
+  assert.ok(status.includes('shop-app') && status.includes('กำลังทำงาน'));
+  assert.ok(status.includes('ครบรอบที่ตั้งไว้'), 'max-cycles must not read as "done"');
+  assert.ok(status.includes('แผน 1/2 ข้อ (50%)'));
+
+  const stopReply = handleCommand('/stop', runs); // only one alive → stops it without an index
+  assert.ok(stopReply.includes('จะหยุดเองหลังงานรอบปัจจุบันเสร็จ'));
+  assert.ok(existsSync(`${stateFile}.autoloop.stop`), 'graceful stop-signal file dropped');
+  rmSync(`${stateFile}.autoloop.stop`);
+
+  assert.ok(handleCommand('/stop 5', runs).includes('ไม่มีงานหมายเลข 5'));
+  assert.ok(handleCommand('/help', runs).includes('/status'));
+  assert.ok(handleCommand('อะไรนะ', runs).includes('/status'), 'unknown input → help');
+  assert.ok(formatStatusReply([]).includes('ยังไม่มีงาน'));
 });
 
 // ── doctor helpers (pure) ──

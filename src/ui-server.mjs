@@ -17,6 +17,25 @@ import { listSessions } from './sessions.mjs';
 import { loadSecrets, defaultSecretsPath } from './secrets.mjs';
 import { validateBotToken, detectChatId, maskToken } from './notify-setup.mjs';
 import { sendWebhook } from './notify.mjs';
+import { startTelegramBot } from './bot.mjs';
+
+// one Telegram poller per process — the dashboard is the hub that answers /status etc.
+let bot = null;
+function restartBot() {
+  if (bot) {
+    bot.stop();
+    bot = null;
+  }
+  const tg = loadSecrets().telegram || {};
+  if (tg.token && tg.chatId) {
+    bot = startTelegramBot({
+      token: tg.token,
+      chatId: tg.chatId,
+      getRuns: collectRuns,
+      say: (s) => process.stdout.write(`[autoloop] ${s}\n`),
+    });
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BIN = resolve(__dirname, '..', 'bin', 'autoloop.mjs');
@@ -446,9 +465,15 @@ async function handle(req, res) {
         json(res, 400, { error: 'missing token' });
         return;
       }
-      const found = await detectChatId(token);
-      if (found) json(res, 200, found);
-      else json(res, 404, { error: 'no message found yet' });
+      // Telegram allows ONE getUpdates consumer — park the bot poller while we borrow it
+      bot?.pause();
+      try {
+        const found = await detectChatId(token);
+        if (found) json(res, 200, found);
+        else json(res, 404, { error: 'no message found yet' });
+      } finally {
+        bot?.resume();
+      }
       return;
     }
     if (path === '/api/telegram/save') {
@@ -474,6 +499,7 @@ async function handle(req, res) {
         status: 'test',
         message: 'ตั้งค่าเสร็จแล้ว — autoloop จะรายงานเข้าห้องนี้ ✅ / Setup complete — autoloop will report here.',
       });
+      restartBot(); // pick up the new token/chat right away
       json(res, 200, { ok: true, botUsername: v.username, test });
       return;
     }
@@ -528,8 +554,17 @@ export function startUiServer({ port = 4900, host = '127.0.0.1' } = {}) {
       json(res, 500, { error: String(err && err.message) });
     });
   });
+  server.on('close', () => {
+    if (bot) {
+      bot.stop();
+      bot = null;
+    }
+  });
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject);
-    server.listen(port, host, () => resolvePromise({ server, port: server.address().port }));
+    server.listen(port, host, () => {
+      restartBot(); // answers /status·/stop in the Telegram chat (no-op unless configured)
+      resolvePromise({ server, port: server.address().port });
+    });
   });
 }

@@ -40,3 +40,5 @@ node bin/autoloop.mjs ui --open      # starts the dashboard on 127.0.0.1:4900 an
   mutating POSTs require the `x-autoloop` header)
 - `src/doctor.mjs` — tool checks, guided install, desktop-shortcut creation
 - `src/notify.mjs` — Telegram/webhook events; every message carries plan progress
+- `src/bot.mjs` — two-way Telegram: long-poll listener inside the dashboard process
+  answering /status and /stop (graceful, stop-signal file) for the configured chatId only
