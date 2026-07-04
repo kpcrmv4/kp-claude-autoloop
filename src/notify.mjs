@@ -19,6 +19,12 @@ export function fmtDateTime(ms) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())} น.`;
 }
 
+/** ▰▰▰▰▰▰▱▱▱▱ — a progress bar that renders everywhere, no images needed */
+export function progressBar(pct, width = 10) {
+  const filled = Math.max(0, Math.min(width, Math.round((Number(pct) || 0) / (100 / width))));
+  return '▰'.repeat(filled) + '▱'.repeat(width - filled);
+}
+
 /** Human-readable one-message form of an event (ภาษาคน, ไม่ใช่ศัพท์ dev). */
 export function formatEventText(event) {
   const header = STATUS_HEADER[event.status] || `ℹ️ ${event.status}`;
@@ -27,7 +33,7 @@ export function formatEventText(event) {
     header,
     event.project ? `งาน: ${event.project}` : null,
     event.message ? event.message : null,
-    plan ? `ความคืบหน้า: ${plan.done}/${plan.total} ข้อ (${plan.pct}%)` : null,
+    plan ? `${progressBar(plan.pct)} ${plan.done}/${plan.total} ข้อ (${plan.pct}%)` : null,
     plan && plan.nextItem ? `ข้อถัดไป: ${String(plan.nextItem).slice(0, 100)}` : null,
     event.cycles != null ? `ทำไปแล้ว ${event.cycles} รอบ` : null,
     event.resumeAt ? `จะตื่นมาทำต่อ: ${fmtDateTime(event.resumeAt)}` : null,

@@ -135,11 +135,12 @@ test('formatEventText: plan progress + next item ride along on every notificatio
     plan: { done: 24, total: 44, pct: 55, nextItem: 'P3.5 วันหยุดชดเชย' },
     cycles: 3,
   });
-  assert.ok(text.includes('ความคืบหน้า: 24/44 ข้อ (55%)'));
+  assert.ok(text.includes('24/44 ข้อ (55%)'));
+  assert.ok(text.includes('▰'), 'progress bar in every notification');
   assert.ok(text.includes('ข้อถัดไป: P3.5 วันหยุดชดเชย'));
   // no plan (state file unreadable) → lines simply absent, message still sends
   const bare = formatEventText({ status: 'done', project: 'x', plan: null });
-  assert.ok(!bare.includes('ความคืบหน้า'));
+  assert.ok(!bare.includes('ข้อ ('));
 });
 
 test('withLoopProtocol: appended when prompt lacks the marker, skipped when it covers it', () => {

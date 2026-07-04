@@ -115,26 +115,33 @@ test('scanWorkflow: finds plan files in docs/ and one level deeper, verifies che
 });
 
 // ── telegram bot commands (pure dispatch — no network) ──
-test('bot: /status renders every run state · /stop drops the graceful signal · unknown → help', () => {
+test('bot: /status card + buttons · /stop drops the graceful signal · /continue reruns · unknown → help', async () => {
   const stateFile = join(dir, 'BOT.md');
   writeFileSync(stateFile, '- [x] a\n- [ ] b\n');
   const runs = [
     { stateFile, cwd: 'F:/shop-app', status: 'running', alive: true, cycles: 2, plan: { done: 1, total: 2, pct: 50, nextItem: 'b' }, activity: 'Edit · x.ts' },
     { stateFile: join(dir, 'other.md'), cwd: 'F:/other', status: 'done', doneReason: 'max-cycles', alive: false, plan: null },
   ];
-  const status = handleCommand('/status', runs);
-  assert.ok(status.includes('shop-app') && status.includes('กำลังทำงาน'));
-  assert.ok(status.includes('ครบรอบที่ตั้งไว้'), 'max-cycles must not read as "done"');
-  assert.ok(status.includes('แผน 1/2 ข้อ (50%)'));
+  const status = await handleCommand('/status', runs);
+  assert.ok(status.text.includes('shop-app') && status.text.includes('กำลังทำงาน'));
+  assert.ok(status.text.includes('ครบรอบที่ตั้งไว้'), 'max-cycles must not read as "done"');
+  assert.ok(status.text.includes('1/2 ข้อ (50%)') && status.text.includes('▰'), 'progress bar rendered');
+  const buttons = status.keyboard.inline_keyboard.flat().map((b) => b.callback_data);
+  assert.ok(buttons.includes('status') && buttons.includes('stop:0') && buttons.includes('rerun:1'), 'refresh + stop + continue buttons');
 
-  const stopReply = handleCommand('/stop', runs); // only one alive → stops it without an index
-  assert.ok(stopReply.includes('จะหยุดเองหลังงานรอบปัจจุบันเสร็จ'));
+  const stopReply = await handleCommand('/stop', runs); // only one alive → stops it without an index
+  assert.ok(stopReply.text.includes('จะหยุดเองหลังงานรอบปัจจุบันเสร็จ'));
   assert.ok(existsSync(`${stateFile}.autoloop.stop`), 'graceful stop-signal file dropped');
   rmSync(`${stateFile}.autoloop.stop`);
 
-  assert.ok(handleCommand('/stop 5', runs).includes('ไม่มีงานหมายเลข 5'));
-  assert.ok(handleCommand('/help', runs).includes('/status'));
-  assert.ok(handleCommand('อะไรนะ', runs).includes('/status'), 'unknown input → help');
+  const cont = await handleCommand('/continue', runs, { rerun: async () => ({ code: 200, body: {} }) });
+  assert.ok(cont.text.includes('กลับมาทำต่อแล้ว'), 'single eligible run reruns without an index');
+  const contFail = await handleCommand('/continue', runs, { rerun: async () => ({ code: 400, body: { error: 'งานจบแล้ว' } }) });
+  assert.ok(contFail.text.includes('งานจบแล้ว'));
+
+  assert.ok((await handleCommand('/stop 5', runs)).text.includes('ไม่มีงานหมายเลข 5'));
+  assert.ok((await handleCommand('/help', runs)).text.includes('/continue'));
+  assert.ok((await handleCommand('อะไรนะ', runs)).text.includes('/status'), 'unknown input → help');
   assert.ok(formatStatusReply([]).includes('ยังไม่มีงาน'));
 });
 

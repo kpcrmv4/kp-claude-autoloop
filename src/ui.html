@@ -196,6 +196,9 @@ When done, tell me this chat's session id.</pre>
         Want to stop? Press <b style="display:inline">Stop</b> — it finishes the current round cleanly first, so nothing breaks halfway.</div>
       <div class="step"><b>When does it finish?</b>
         When every item in the plan is done, Claude writes <code>AUTOLOOP: COMPLETE</code> at the end of the plan file and the loop stops by itself (with a Telegram message, if you've set that up). If it reaches the round limit (Max cycles) first, it pauses and waits for you to send it another batch.</div>
+      <div class="step"><b>Drive it from Telegram too</b>
+        Once the bot is set up (gear button above) and this dashboard is running, chat with your bot from your phone:
+        <code>/status</code> shows a live card of every job with tap-buttons, <code>/stop</code> stops after the current job finishes, and <code>/continue</code> gives a job that hit its round cap a fresh budget to keep going.</div>
     </div>
 
     <div data-lang="th">
@@ -222,6 +225,9 @@ When done, tell me this chat's session id.</pre>
         อยากหยุดก็กด <b style="display:inline">หยุด</b> — มันจะเก็บงานรอบที่ค้างให้จบเรียบร้อยก่อนค่อยหยุด งานไม่พังกลางทาง</div>
       <div class="step"><b>แล้วมันจบเมื่อไหร่?</b>
         เมื่องานในแผนเสร็จครบทุกข้อ Claude จะเขียนคำว่า <code>AUTOLOOP: COMPLETE</code> ปิดท้ายไฟล์แผน แล้วโปรแกรมก็หยุดเอง (พร้อมแจ้งเข้า Telegram ถ้าตั้งไว้) หรือถ้าทำครบจำนวนรอบที่ตั้งไว้ (Max cycles) ก่อนงานเสร็จ มันจะพักรอให้เรามาสั่งรอบเพิ่ม</div>
+      <div class="step"><b>สั่งงานจากมือถือผ่าน Telegram ได้ด้วย</b>
+        ตั้งค่าบอทแล้ว (ปุ่มเฟืองด้านบน) และหน้า dashboard นี้เปิดอยู่ ทักบอทจากมือถือได้เลย:
+        <code>/status</code> ดูการ์ดสถานะสดของทุกงานพร้อมปุ่มกดสั่ง · <code>/stop</code> สั่งหยุดแบบรอจบงานปัจจุบันก่อน · <code>/continue</code> งานที่ครบรอบแล้วให้ทำต่อด้วยงบรอบชุดใหม่</div>
     </div>
 
   </div>

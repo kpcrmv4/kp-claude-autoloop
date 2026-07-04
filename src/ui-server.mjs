@@ -32,6 +32,7 @@ function restartBot() {
       token: tg.token,
       chatId: tg.chatId,
       getRuns: collectRuns,
+      rerun: rerunByStateFile,
       say: (s) => process.stdout.write(`[autoloop] ${s}\n`),
     });
   }
@@ -155,6 +156,53 @@ export function scanWorkflow(cwd) {
     } catch { /* unreadable → treat as no checklist */ }
   }
   return { stateFile, stateHasChecklist, promptFile, modelRules };
+}
+
+/**
+ * Rerun core — shared by POST /api/rerun and the Telegram /continue command.
+ * Rebuilds the exact start args from the sidecar + registry, resumes the
+ * pinned session. extraCycles lets "continue" grant a bigger round budget.
+ * @returns {{code:number, body:object}}
+ */
+export async function rerunByStateFile(stateFile, { extraCycles = 0 } = {}) {
+  const rt = readRuntime(stateFile);
+  const reg = readRegistry().find((r) => resolve(r.stateFile) === resolve(stateFile || '.'));
+  if (!rt || !reg) return { code: 404, body: { error: 'ไม่พบข้อมูล run นี้' } };
+  if (rt.pid && pidAlive(rt.pid) && ['running', 'sleeping'].includes(rt.status)) {
+    return { code: 409, body: { error: 'ยังรันอยู่ — หยุดก่อนถ้าจะเริ่มใหม่' } };
+  }
+  // work truly done (marker in the state file) → a rerun would exit on round 0.
+  // the next batch of work needs planning first, not a blind restart
+  const marker = rt.stopMarker || 'AUTOLOOP: COMPLETE';
+  try {
+    if (readFileSync(stateFile, 'utf8').includes(marker)) {
+      return { code: 400, body: { error: `งานชุดนี้จบแล้ว (มี "${marker}" ใน state file) — ให้ Claude เพิ่มแผนงานรอบใหม่/ลบ marker ก่อน แล้วค่อยรันต่อ` } };
+    }
+  } catch { /* state unreadable → let startArgsFromPayload report it */ }
+  const c = rt.restart || {};
+  let args;
+  try {
+    args = startArgsFromPayload({
+      cwd: reg.cwd || rt.cwd,
+      stateFile,
+      session: rt.sessionId || '',
+      promptFile: c.promptFile || '',
+      prompt: c.prompt || '',
+      modelRules: c.modelRulesFile || rt.modelRulesFile || '',
+      model: c.model || '',
+      effort: c.effort || '',
+      maxCycles: (c.maxCycles || 20) + extraCycles,
+      stopMarker: rt.stopMarker || '',
+      permissionMode: c.permissionMode || 'acceptEdits',
+      notify: c.noNotify ? false : undefined,
+    });
+  } catch (err) {
+    return { code: 400, body: { error: err.message } };
+  }
+  // claudeCmd comes only from the sidecar a previous run wrote (test hook) — never from the browser
+  if (c.claudeCmd) args.push('--claude-cmd', c.claudeCmd);
+  const result = await runStart(args);
+  return { code: result.code === 0 ? 200 : 500, body: result };
 }
 
 /** Public (masked) view of the saved Telegram config — the token never leaves the server. */
@@ -363,51 +411,8 @@ async function handle(req, res) {
     // restart a finished/stopped/dead run with the exact config of its last run
     // (from the sidecar) — resuming the pinned session so it's the SAME chat
     if (path === '/api/rerun') {
-      const stateFile = body.stateFile || '';
-      const rt = readRuntime(stateFile);
-      const reg = readRegistry().find((r) => resolve(r.stateFile) === resolve(stateFile || '.'));
-      if (!rt || !reg) {
-        json(res, 404, { error: 'ไม่พบข้อมูล run นี้' });
-        return;
-      }
-      if (rt.pid && pidAlive(rt.pid) && ['running', 'sleeping'].includes(rt.status)) {
-        json(res, 409, { error: 'ยังรันอยู่ — หยุดก่อนถ้าจะเริ่มใหม่' });
-        return;
-      }
-      // work truly done (marker in the state file) → a rerun would exit on round 0.
-      // the next batch of work needs planning first, not a blind restart
-      const marker = rt.stopMarker || 'AUTOLOOP: COMPLETE';
-      try {
-        if (readFileSync(stateFile, 'utf8').includes(marker)) {
-          json(res, 400, { error: `งานชุดนี้จบแล้ว (มี "${marker}" ใน state file) — ให้ Claude เพิ่มแผนงานรอบใหม่/ลบ marker ก่อน แล้วค่อยรันต่อ` });
-          return;
-        }
-      } catch { /* state unreadable → let startArgsFromPayload report it */ }
-      const c = rt.restart || {};
-      let args;
-      try {
-        args = startArgsFromPayload({
-          cwd: reg.cwd || rt.cwd,
-          stateFile,
-          session: rt.sessionId || '',
-          promptFile: c.promptFile || '',
-          prompt: c.prompt || '',
-          modelRules: c.modelRulesFile || rt.modelRulesFile || '',
-          model: c.model || '',
-          effort: c.effort || '',
-          maxCycles: c.maxCycles || 20,
-          stopMarker: rt.stopMarker || '',
-          permissionMode: c.permissionMode || 'acceptEdits',
-          notify: c.noNotify ? false : undefined,
-        });
-      } catch (err) {
-        json(res, 400, { error: err.message });
-        return;
-      }
-      // claudeCmd comes only from the sidecar a previous run wrote (test hook) — never from the browser
-      if (c.claudeCmd) args.push('--claude-cmd', c.claudeCmd);
-      const result = await runStart(args);
-      json(res, result.code === 0 ? 200 : 500, result);
+      const r = await rerunByStateFile(body.stateFile || '', { extraCycles: Number(body.extraCycles) || 0 });
+      json(res, r.code, r.body);
       return;
     }
     if (path === '/api/stop') {
